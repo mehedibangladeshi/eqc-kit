@@ -1,0 +1,89 @@
+# eqc-kit
+
+A tool-agnostic kit that helps any developer raise their project's compliance with a tiered engineering-quality standard. The kit provides an interactive installer, a vendored zero-dependency engine, and AI agent adapters.
+
+## Language
+
+### The standard
+
+**Standard**:
+The user-supplied document of ordered tiers of numbered rules, defining what constitutes "quality" for a project.
+_Avoid_: spec, checklist, policy
+
+**Tier**:
+One ordered level of the Standard, named by the document (e.g., Bronze, Silver, Gold, or L1, L2, L3). Every project has a Compliance level equal to the highest Tier reached.
+_Avoid_: level, grade
+
+**Rule**:
+One numbered item within a Tier. Each Rule has an ID formatted as `<TIERID>-<number printed in the doc>`, never renumbered.
+_Avoid_: check, requirement, item
+
+**Applicability tag**:
+A stack label on a Rule (e.g., [web] [backend] [mobile]), used to filter which Rules apply to this project.
+_Avoid_: platform tag, language tag
+
+### Measuring
+
+**Index**:
+The machine-readable rules.json extracted from the Standard, containing all Rules, their IDs, Tiers, Applicability tags, and descriptions.
+_Avoid_: parse, catalog
+
+**Audit**:
+The process of evaluating Rules against the codebase to determine pass/partial/fail Verdicts with evidence.
+_Avoid_: scan, check
+
+**Verdict**:
+The audit result for one Rule: pass (Rule fully satisfied), partial (Rule partially satisfied), or fail (Rule not satisfied). Evidence is recorded.
+_Avoid_: score, grade
+
+**Compliance level**:
+The highest Tier reached. A Tier is reached when it and every lower Tier have zero fails (partials do not block). If the lowest Tier has a fail, Compliance level is HARD_FAIL.
+_Avoid_: score, current tier
+
+### Improving
+
+**Effort tier**:
+A sizing label for a fix: trivial, small, medium, or large, used to estimate work required.
+_Avoid_: size, complexity
+
+**Blast radius**:
+Tags on a failing Verdict (e.g., ci-config, package-install, architecture, large-sweep) indicating the scope and risk of a fix, used to decide Gates.
+_Avoid_: risk, impact
+
+**Gate**:
+An approval pause before applying a risky fix, triggered by Blast radius tags.
+_Avoid_: guard, check
+
+**Plan**:
+A chunked, reviewable fix plan for one medium or large failing Rule, broken into resumable Chunks.
+_Avoid_: proposal, roadmap
+
+**Chunk**:
+One resumable step of a Plan, mechanical or requiring judgment. Chunks are numbered, run in order, and a Plan can be resumed at the next unticked Chunk.
+_Avoid_: step, batch
+
+**Milestone**:
+A log entry recording the outcome of a fix: done, partial, blocked, or failed.
+_Avoid_: status, checkpoint
+
+### Installation
+
+**Engine**:
+The deterministic zero-dependency script (`.eqc/bin/eqc.mjs`) that owns all state files and the tier maths. It never judges code — Audits are done by the agent following a Prompt.
+_Avoid_: CLI, runner
+
+**Installer**:
+The `npx eqc-kit` command (subcommands: init, update, uninstall, doctor) that sets up the `.eqc/` directory and generates Adapters.
+_Avoid_: setup, bootstrap
+
+**Adapter**:
+Generated files that wire Prompts into one AI tool (Claude Code .claude/skills + .claude/agents, or AGENTS.md for any agent). One per tool.
+_Avoid_: plugin, integration
+
+**Prompt**:
+A harness-neutral markdown playbook in `.eqc/prompts/` that an agent follows to audit or fix Rules. Prompts never name a specific AI tool or hook.
+_Avoid_: skill, command, script
+
+**Managed file**:
+A file or code block written by the Installer, carrying an eqc-kit marker comment, safe to regenerate on update or reinstall.
+_Avoid_: generated file, template

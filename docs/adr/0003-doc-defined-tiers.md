@@ -1,0 +1,3 @@
+# Tiers are defined by the Standard, not hardcoded
+
+The Index stores the Standard's tiers as an ordered list (`rules.json` `tiers[]`, lowest first) instead of a fixed LOW/MEDIUM/HIGH, because other teams' standards use 2–5 tiers with their own names (Bronze/Silver/Gold, L1–L4). Tier maths is generic: HARD_FAIL if the lowest Tier has any fail; otherwise the Compliance level is the highest Tier where it and every lower Tier have zero fails. Partials don't block a Tier.

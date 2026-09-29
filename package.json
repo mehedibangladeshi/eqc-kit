@@ -1,0 +1,36 @@
+{
+  "name": "eqc-kit",
+  "version": "0.1.0",
+  "description": "A tool-agnostic kit that helps developers raise their project's compliance with a tiered engineering-quality standard.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Mehedi Hasan",
+  "bin": {
+    "eqc-kit": "bin/cli.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "bin",
+    "engine",
+    "prompts",
+    "adapters",
+    "standards",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "test": "node --test"
+  },
+  "keywords": [
+    "engineering-quality",
+    "compliance",
+    "ai-agent",
+    "claude-code",
+    "agents-md",
+    "code-quality",
+    "audit"
+  ]
+}
