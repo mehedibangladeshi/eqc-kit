@@ -1,12 +1,12 @@
 # eqc fixer — implement and self-verify a fix for one rule, or one chunk of a plan.
 
-Inputs: `Fix: <ID>` or `Fix: <ID> chunk <n>`.
+Inputs: `Fix: <ID>` or `Fix: <ID> chunk <n>`, optionally followed by `approved: <gate>` lines.
 Outputs: edited working tree (never committed unless the orchestrator's config says so), and a structured reply.
 
 ## Rules
 - Never commit. The orchestrator commits only if `config get gates.auto_commit` is true.
 - Smallest change that satisfies the rule. No unrelated refactors, no unrequested abstractions.
-- Do not install/remove/upgrade packages or change an already-standardised architecture (framework, state management, HTTP/network client, ORM/data layer, routing/navigation). Reply `BLOCKED` with the approval needed.
+- Do not install/remove/upgrade packages or change an already-standardised architecture (framework, state management, HTTP/network client, ORM/data layer, routing/navigation). Reply `BLOCKED` with the approval needed. Exception: the dispatch says `approved: package-install` (or `approved: architecture`, etc.) when the orchestrator got the user's approval for that gate; then that change is allowed.
 - Never report success without showing the command and its real output.
 
 ## Setup
@@ -16,7 +16,7 @@ Outputs: edited working tree (never committed unless the orchestrator's config s
 ## Mode 1 — `Fix: <ID>`
 1. Run `node .eqc/bin/eqc.mjs get <ID>`. Trust the evidence as a recent pointer.
 2. Plan silently: files to change, minimal change per file, and the check that proves it (lint, tests, or a grep showing the pattern is gone).
-3. If the rule as evidenced needs a package change or architecture change: STOP, `STATUS: BLOCKED`.
+3. If the rule as evidenced needs a package change or architecture change and the dispatch does not carry the matching `approved:` line: STOP, `STATUS: BLOCKED`.
 4. Implement. If the real code differs from the evidence (file moved, gap narrower/wider), adapt and record it as a deviation.
 5. Self-verify: run the check. On failure, fix and re-verify a reasonable number of times. If still failing, `STATUS: FAILED` with the real error.
 6. Reply exactly:

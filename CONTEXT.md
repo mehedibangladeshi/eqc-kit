@@ -33,11 +33,11 @@ The process of evaluating Rules against the codebase to determine pass/partial/f
 _Avoid_: scan, check
 
 **Verdict**:
-The audit result for one Rule: pass (Rule fully satisfied), partial (Rule partially satisfied), or fail (Rule not satisfied). Evidence is recorded.
+The audit result for one Rule: pass | partial | fail | na. pass (Rule fully satisfied), partial (partly satisfied), fail (not satisfied), na (Rule does not apply to this project; evidence says why, and it is not a fail). Evidence is recorded.
 _Avoid_: score, grade
 
 **Compliance level**:
-The highest Tier reached. A Tier is reached when it and every lower Tier have zero fails (partials do not block). If the lowest Tier has a fail, Compliance level is HARD_FAIL.
+The highest Tier reached. A Tier is reached when every Rule in it and in every lower Tier has a Verdict and none is a fail (partial and na do not block; unaudited Rules do). If the lowest Tier has a fail, Compliance level is HARD_FAIL (it takes precedence); if it has no fail but is not fully audited, the level is NONE.
 _Avoid_: score, current tier
 
 ### Improving

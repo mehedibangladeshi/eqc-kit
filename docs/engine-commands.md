@@ -36,6 +36,7 @@ $ echo $?
 | Command | Purpose | Writes |
 |---|---|---|
 | `selftest` | Run the Engine's built-in assertions | nothing |
+| `reset` | Delete the Index, compliance and doc-meta (start over) | removes `rules.json`, `compliance.json`, `doc-meta.md` |
 | `report [--write]` | Print (or write) the Markdown report | report file with `--write` |
 | `rank [keyword]` | List fix candidates, easiest first | nothing |
 | `ids <arg>` | Resolve which Rules to audit, grouped by Tier | nothing |
@@ -69,11 +70,11 @@ Standard: Example Engineering Quality Standard v1.0
 Audited: 2026-09-29
 Compliance level: Bronze
 
-| Tier | Pass | Partial | Fail | Total |
-|---|---|---|---|---|
-| Bronze | 5 | 1 | 0 | 6 |
-| Silver | 4 | 0 | 2 | 6 |
-| Gold | 4 | 0 | 1 | 5 |
+| Tier | Pass | Partial | Fail | N/A | Total |
+|---|---|---|---|---|---|
+| Bronze | 5 | 1 | 0 | 0 | 6 |
+| Silver | 4 | 0 | 2 | 0 | 6 |
+| Gold | 4 | 0 | 1 | 0 | 5 |
 
 ## Fails
 
@@ -93,11 +94,31 @@ $ node .eqc/bin/eqc.mjs report --write
 report: …/docs/eqc-report.md
 ```
 
-Before any Audit, the level reads `not audited` and every count is 0. Evidence longer than 160 characters is truncated.
+Verdicts of `na` get an `N/A` column and an `## Not applicable` section listing each Rule with its evidence (real output after merging one `na` and one `pass`):
+
+```
+| Tier | Pass | Partial | Fail | N/A | Total |
+|---|---|---|---|---|---|
+| Bronze | 1 | 0 | 0 | 1 | 6 |
+| Silver | 0 | 0 | 0 | 0 | 6 |
+| Gold | 0 | 0 | 0 | 0 | 5 |
+
+## Not applicable
+
+- **BRONZE-6** — Dependency vulnerability audit — Package has zero dependencies and no lockfile, so there is nothing to audit.
+```
+
+After a partial Audit the level says how much is missing. Real output after merging one `na` and one `pass` (15 Rules unaudited, so no Tier is reached; `merge` printed `merged 2 results · level: NONE · 15 rules not audited`):
+
+```
+Compliance level: not reached — 15 rules not audited
+```
+
+When a Tier is reached but Rules above it are unaudited, an `Unaudited: N rules` line follows the level. Before any Audit, the level reads `not audited` and every count is 0. Evidence longer than 160 characters is truncated.
 
 ## `rank [keyword]`
 
-Lists fix candidates, ordered by Tier (lowest first), then Effort tier, then file count, then Rule order. Candidates are the `fail` Verdicts; if there are none, the `partial` ones. A `keyword` filters on the Rule title and detail (case-insensitive). If nothing matches, it says so and prints the unfiltered list.
+Lists fix candidates, ordered by Tier (lowest first), then Effort tier, then file count, then Rule order. Candidates are the `fail` Verdicts; if there are none, the `partial` ones. `na` Verdicts are never candidates. A `keyword` filters on the Rule title and detail (case-insensitive). If nothing matches, it says so and prints the unfiltered list.
 
 Each line is `ID — title — files · effort [⚠ blast radius]`:
 
@@ -124,7 +145,7 @@ Turns a selector into the Rule IDs to audit, one line per Tier, so audits can ru
 | Arg | Selects |
 |---|---|
 | `full` | Every Rule |
-| `recheck` | Rules whose Verdict is `fail` or `partial`, or that have no Verdict |
+| `recheck` | Rules whose Verdict is `fail` or `partial`, or that have no Verdict (`na` is excluded) |
 | a Tier ID, e.g. `SILVER` | Every Rule in that Tier |
 | `ID,ID,...` | Exactly those IDs |
 
@@ -153,9 +174,9 @@ $ node .eqc/bin/eqc.mjs get SILVER-2,GOLD-9
 
 The only way Verdicts enter `compliance.json`. The file holds Verdicts from one Audit, as `{"results":[...]}` or a bare array (see the merge input below). The Engine:
 
-1. validates every entry (known ID, status is `pass|partial|fail`); on any problem, prints each one and exits 1 without changing anything,
+1. validates every entry (known ID, status is `pass|partial|fail|na`); on any problem, prints each one and exits 1 without changing anything,
 2. replaces existing Verdicts with the same ID and appends new ones,
-3. drops `file_count`, `effort_tier` and `blast_radius` from `pass` entries,
+3. drops `file_count`, `effort_tier` and `blast_radius` from `pass` and `na` entries,
 4. recomputes the tier summary and the Compliance level, and stamps today's date,
 5. writes `compliance.json` and refreshes the report.
 
@@ -163,7 +184,7 @@ Merging is safe to repeat.
 
 ```
 $ node .eqc/bin/eqc.mjs merge .eqc/tmp/audit-1.json
-merged 9 results · level: BRONZE
+merged 17 results · level: BRONZE
 report: …/docs/eqc-report.md
 ```
 
@@ -180,12 +201,23 @@ Validation errors:
 ```
 $ node .eqc/bin/eqc.mjs merge .eqc/tmp/bad.json
 merge: entry 0: unknown rule id "BRONZE-99"
-merge: entry 0 (BRONZE-99): status must be one of pass|partial|fail, got "ok"
+merge: entry 0 (BRONZE-99): status must be one of pass|partial|fail|na, got "ok"
 $ echo $?
 1
 ```
 
 An unreadable file prints `merge: cannot read <path>: <reason>` and exits 1.
+
+## `reset`
+
+Deletes `rules.json`, `compliance.json` and `doc-meta.md` (works on any OS; missing files are fine). Keeps `milestones.json`, `plans/`, `config.json` and `standard/`. `eqc check <new-standard>` runs it before re-indexing.
+
+```
+$ node .eqc/bin/eqc.mjs reset
+reset: removed rules.json, compliance.json, doc-meta.md (kept milestones, plans, config, standard)
+$ node .eqc/bin/eqc.mjs report
+No index yet — run `eqc check` in your AI agent first (it indexes the standard).
+```
 
 ## `chunks <ID>`
 
@@ -296,15 +328,15 @@ Written only by `merge`. Never edit it by hand.
     }
   ],
   "tier_summary": {
-    "BRONZE": { "pass": 5, "fail": 0, "partial": 1, "total": 6 },
-    "SILVER": { "pass": 4, "fail": 2, "partial": 0, "total": 6 },
-    "GOLD":   { "pass": 4, "fail": 1, "partial": 0, "total": 5 }
+    "BRONZE": { "pass": 5, "fail": 0, "partial": 1, "na": 0, "total": 6 },
+    "SILVER": { "pass": 4, "fail": 2, "partial": 0, "na": 0, "total": 6 },
+    "GOLD":   { "pass": 4, "fail": 1, "partial": 0, "na": 0, "total": 5 }
   },
   "current_tier": "BRONZE"
 }
 ```
 
-`current_tier` is a Tier ID or `HARD_FAIL`. It is the Compliance level. `notes` and the effort fields appear only on `fail` and `partial` entries. `total` counts every Rule in the Tier, audited or not.
+`current_tier` is a Tier ID, `HARD_FAIL`, or `NONE` (lowest Tier not fully audited). A Tier counts as reached only if every Rule in it has a Verdict and none is `fail`. It is the Compliance level. `notes` and the effort fields appear only on `fail` and `partial` entries. `total` counts every Rule in the Tier, audited or not (including `na`).
 
 ### `milestones.json`
 
@@ -339,7 +371,7 @@ or a bare array `[ {...}, {...} ]`.
 | Field | Required | Values |
 |---|---|---|
 | `id` | yes | A Rule ID present in the Index |
-| `status` | yes | `pass`, `partial`, `fail` |
+| `status` | yes | `pass`, `partial`, `fail`, `na` (evidence must say why the Rule does not apply) |
 | `evidence` | expected | At most 2 sentences plus file paths, or a command and its output |
 | `notes` | for fail/partial | What is missing or what to do |
 | `file_count` | for fail/partial | Number of distinct files to change |

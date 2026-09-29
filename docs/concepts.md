@@ -47,6 +47,7 @@ The split keeps the maths reproducible: two teammates with the same Verdicts alw
 | `pass` | Fully met across the codebase |
 | `partial` | Met in some places or in part |
 | `fail` | Not met |
+| `na` | Rule does not apply to this project (e.g. DB migrations in a service with no database). The evidence must say why. Never a fail, and skipped by `rank` and `ids recheck` |
 
 Example: `{"id":"BRONZE-6","status":"partial","evidence":"npm audit runs in CI but only warns."}`.
 
@@ -64,17 +65,18 @@ Example: `{"id":"BRONZE-6","status":"partial","evidence":"npm audit runs in CI b
 
 Rules:
 
-- Count `fail` Verdicts per Tier. Partials do not count.
+- Count `fail` Verdicts per Tier. Partials and `na` do not count.
 - If the lowest Tier has any fail, the level is `HARD_FAIL`.
-- Otherwise the level is the highest Tier such that it and every Tier below it have zero fails.
+- Otherwise the level is the highest Tier reached. A Tier is reached when every Rule in it and in every Tier below it has a Verdict and none is a fail. `partial` and `na` do not block; unaudited Rules do.
+- If the lowest Tier has no fail but is not fully audited, the level is `NONE`, reported as "not reached — N rules not audited". `merge` and the report show the unaudited count whenever it is above 0.
 
-Worked example, using the example Standard after a real audit (from the [engine-commands](engine-commands.md) walkthrough):
+Worked example, using the example Standard after a real, complete audit (all 17 Rules have a Verdict) (from the [engine-commands](engine-commands.md) walkthrough):
 
-| Tier | Pass | Partial | Fail | Total |
-|---|---|---|---|---|
-| Bronze | 5 | 1 | 0 | 6 |
-| Silver | 4 | 0 | 2 | 6 |
-| Gold | 4 | 0 | 1 | 5 |
+| Tier | Pass | Partial | Fail | N/A | Total |
+|---|---|---|---|---|---|
+| Bronze | 5 | 1 | 0 | 0 | 6 |
+| Silver | 4 | 0 | 2 | 0 | 6 |
+| Gold | 4 | 0 | 1 | 0 | 5 |
 
 - Bronze has 0 fails, so it is reached. The one partial does not block it.
 - Silver has 2 fails, so it is not reached.

@@ -10,7 +10,7 @@ There is no prior index; every run is a from-scratch build. Do not diff against 
    - `id` = short uppercase slug of the tier name; `name` = tier name; `order` = 1 for lowest; `section_heading` = exact heading text of the tier section, without `#` marks.
    - Do NOT emit rules for a "below lowest tier" section (e.g. a hard-fail summary). Compliance treats a fail in the lowest tier as the hard fail.
 2. Apply indexing instructions: "skip X" -> do not emit it, record it in `doc-meta.md`; "only tier Y" -> emit only that tier. If ambiguous, take the most literal reading and say so. Never silently ignore an instruction.
-3. Applicability: read the stack tags. Keep a rule if its tags intersect them, or it is tagged `all` / untagged. For multi-stack items keep only the matching sub-bullet as `detail`. List excluded rules (id, title, tags) in your reply.
+3. Applicability: read the stack tags. Keep a rule if ANY of its tags is in `stack.tags`, or it is tagged `all` / untagged. If a rule has per-stack sub-bullets, keep only the bullets matching `stack.tags` in `detail`; inline tags on one line are kept whole. List excluded rules (id, title, tags) in your reply.
 4. IDs: `id = <TIERID>-<n>` where n is the number PRINTED next to the item in the doc body. `order` = n. Never renumber or fill gaps (11, 13 -> `X-11`, `X-13`). If an item has no printed number or two items in a tier share one, STOP and report it; do not invent an id.
 5. The tier body wins over the changelog. Changelog/"notes" sections are history, not a second source of truth. File each rule under the tier the body places it in.
    - Note contradicts body: file per body; set `conflict_note` to a one-line explanation (e.g. "Doc notes say A->B; body lists it under A; filed under A per body; note not applied."); list under "Changelog notes NOT applied (doc body wins)" in `doc-meta.md`.
@@ -23,8 +23,10 @@ There is no prior index; every run is a from-scratch build. Do not diff against 
  "tiers":[{"id":"BRONZE","name":"Bronze","order":1,"section_heading":"Bronze"}],
  "rules":[{"id":"BRONZE-1","tier":"BRONZE","order":1,"title":"","detail":"","detection_hint":"","applies_to":["all"],"conflict_note":null,"source_line":12}]}
 ```
+   - `applies_to` = the rule's tags as printed in the doc (`["all"]` if untagged).
+   - `title` = the bold text (or the text before the first tag/colon if not bold); `detail` = the rest.
+   - `indexed_at` = today's local date.
 9. Write `.eqc/doc-meta.md`: doc version/date and today's date; "Changelog notes NOT applied (doc body wins)" bullets (rule id, what the note claimed, where the body filed it); indexing instructions and what you did with each; excluded rules; one line of counts per tier.
-10. Run `node .eqc/bin/eqc.mjs check-ids <doc>`; if it exits 1, fix the index (or report the doc problem) before replying.
 
 ## Reply (only this)
 Doc version/date; stack tags used; rule counts per tier; excluded rules; changelog notes not applied; what you did with each instruction; any STOP problems.

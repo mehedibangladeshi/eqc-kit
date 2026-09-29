@@ -9,7 +9,7 @@ import assert from 'node:assert';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const EFFORT_ORDER = { trivial: 0, small: 1, medium: 2, large: 3 };
-const STATUSES = ['pass', 'partial', 'fail'];
+const STATUSES = ['pass', 'partial', 'fail', 'na'];
 const MILESTONE_STATUSES = ['done', 'partial', 'blocked', 'failed'];
 const NO_INDEX_MSG = 'No index yet — run `eqc check` in your AI agent first (it indexes the standard).';
 
@@ -28,7 +28,7 @@ export function tierIds(tiers) {
 
 export function buildTierSummary(rules, results, tiers) {
   const byId = new Map(results.map(r => [r.id, r]));
-  const blank = () => ({ pass: 0, fail: 0, partial: 0, total: 0 });
+  const blank = () => ({ pass: 0, fail: 0, partial: 0, na: 0, total: 0 });
   const summary = {};
   for (const id of tierIds(tiers)) summary[id] = blank();
   for (const rule of rules) {
@@ -41,15 +41,24 @@ export function buildTierSummary(rules, results, tiers) {
   return summary;
 }
 
-// HARD_FAIL if the lowest tier has a fail; else last tier before the first tier with a fail.
+export function unauditedCount(s) {
+  return Math.max(0, (s?.total ?? 0) - (s?.pass ?? 0) - (s?.partial ?? 0) - (s?.fail ?? 0) - (s?.na ?? 0));
+}
+
+export function totalUnaudited(summary) {
+  return Object.values(summary || {}).reduce((n, s) => n + unauditedCount(s), 0);
+}
+
+// HARD_FAIL if the lowest tier has a fail. A tier is reached when it and every lower tier
+// have no fails and no unaudited rules. Nothing reached (lowest tier not fully audited) -> NONE.
 export function computeCurrentTier(summary, tiers) {
   const ids = tierIds(tiers);
   if (ids.length === 0) return 'HARD_FAIL';
   if ((summary[ids[0]] || { fail: 0 }).fail > 0) return 'HARD_FAIL';
-  let achieved = ids[0];
+  let achieved = 'NONE';
   for (const id of ids) {
     const s = summary[id];
-    if (!s || s.fail > 0) break;
+    if (!s || s.fail > 0 || unauditedCount(s) > 0) break;
     achieved = id;
   }
   return achieved;
@@ -59,7 +68,7 @@ export function computeCurrentTier(summary, tiers) {
 
 export function stripEffortFieldsOnPass(results) {
   return results.map(r => {
-    if (r.status !== 'pass') return r;
+    if (r.status !== 'pass' && r.status !== 'na') return r;
     const { file_count, effort_tier, blast_radius, ...rest } = r;
     return rest;
   });
@@ -246,22 +255,27 @@ export function buildReport(rulesDoc, compliance) {
   const std = rulesDoc.standard || {};
   const tierName = new Map(tiers.map(t => [t.id, t.name]));
   const cur = compliance.current_tier;
-  const level = cur === 'HARD_FAIL' ? 'HARD_FAIL' : (tierName.get(cur) || cur || 'not audited');
+  const unaudited = totalUnaudited(compliance.tier_summary);
+  const level = cur === 'HARD_FAIL' ? 'HARD_FAIL'
+    : cur === 'NONE' ? `not reached — ${unaudited} rules not audited`
+    : (tierName.get(cur) || cur || 'not audited');
   const out = [];
   out.push(`# ${std.title || 'EQC'} — compliance report`, '');
   out.push(`Standard: ${std.title || '?'} v${std.version || '?'}`);
   out.push(`Audited: ${compliance.audited_at || 'never'}`);
-  out.push(`Compliance level: ${level}`, '');
-  out.push('| Tier | Pass | Partial | Fail | Total |', '|---|---|---|---|---|');
+  out.push(`Compliance level: ${level}`);
+  if (unaudited > 0 && cur !== 'NONE') out.push(`Unaudited: ${unaudited} rules`);
+  out.push('');
+  out.push('| Tier | Pass | Partial | Fail | N/A | Total |', '|---|---|---|---|---|---|');
   for (const id of tierIds(tiers)) {
-    const s = (compliance.tier_summary || {})[id] || { pass: 0, fail: 0, partial: 0, total: 0 };
-    out.push(`| ${tierName.get(id)} | ${s.pass} | ${s.partial} | ${s.fail} | ${s.total} |`);
+    const s = (compliance.tier_summary || {})[id] || { pass: 0, fail: 0, partial: 0, na: 0, total: 0 };
+    out.push(`| ${tierName.get(id)} | ${s.pass} | ${s.partial} | ${s.fail} | ${s.na ?? 0} | ${s.total} |`);
   }
   const ruleById = new Map(rules.map(r => [r.id, r]));
   const bullets = status => (compliance.results || [])
     .filter(r => r.status === status)
     .map(r => `- **${r.id}** — ${ruleById.get(r.id)?.title ?? '(unknown rule)'} — ${truncate(r.evidence || r.notes || '', 160)}`);
-  for (const [heading, status] of [['Fails', 'fail'], ['Partials', 'partial']]) {
+  for (const [heading, status] of [['Fails', 'fail'], ['Partials', 'partial'], ['Not applicable', 'na']]) {
     const items = bullets(status);
     if (items.length) out.push('', `## ${heading}`, '', ...items);
   }
@@ -347,6 +361,11 @@ function cmdRank(keyword) {
   }
 }
 
+function cmdReset() {
+  for (const f of ['rules.json', 'compliance.json', 'doc-meta.md']) fs.rmSync(file(f), { force: true });
+  console.log('reset: removed rules.json, compliance.json, doc-meta.md (kept milestones, plans, config, standard)');
+}
+
 function cmdIds(arg) {
   const { rules, tiers, compliance } = requireData();
   if (!arg) fail('usage: eqc.mjs ids <recheck|full|TIERID|ID,ID,...>');
@@ -383,7 +402,8 @@ function cmdMerge(filePath) {
     current_tier,
   };
   writeJson(file('compliance.json'), updated);
-  console.log(`merged ${entries.length} results · level: ${current_tier}`);
+  const un = totalUnaudited(tier_summary);
+  console.log(`merged ${entries.length} results · level: ${current_tier}${un > 0 ? ` · ${un} rules not audited` : ''}`);
   const p = writeReport(rulesDoc, updated);
   if (p) console.log(`report: ${p}`);
 }
@@ -442,8 +462,8 @@ export function selftest() {
 
   const rules = [{ id: 'A-1', tier: 'A' }, { id: 'A-2', tier: 'A' }, { id: 'B-1', tier: 'B' }];
   const s = buildTierSummary(rules, [{ id: 'A-1', status: 'pass' }, { id: 'A-2', status: 'fail' }, { id: 'B-1', status: 'partial' }], t3);
-  assert.deepStrictEqual(s.A, { pass: 1, fail: 1, partial: 0, total: 2 });
-  assert.deepStrictEqual(s.C, { pass: 0, fail: 0, partial: 0, total: 0 });
+  assert.deepStrictEqual(s.A, { pass: 1, fail: 1, partial: 0, na: 0, total: 2 });
+  assert.deepStrictEqual(s.C, { pass: 0, fail: 0, partial: 0, na: 0, total: 0 });
 
   const merged = stripEffortFieldsOnPass(mergeResults(
     [{ id: 'A-1', status: 'fail', effort_tier: 'small' }],
@@ -465,12 +485,13 @@ export function selftest() {
 
 // ---------- CLI dispatch ----------
 
-const USAGE = 'usage: eqc.mjs <selftest|report [--write]|rank [keyword]|ids <...>|get <ID...>|merge <file>|chunks <ID>|check-ids <doc>|milestone add <json>|config get <key>>';
+const USAGE = 'usage: eqc.mjs <selftest|reset|report [--write]|rank [keyword]|ids <...>|get <ID...>|merge <file>|chunks <ID>|check-ids <doc>|milestone add <json>|config get <key>>';
 
 export function main(argv = process.argv.slice(2)) {
   const [cmd, ...args] = argv;
   switch (cmd) {
     case 'selftest': return selftest();
+    case 'reset': return cmdReset();
     case 'report': return cmdReport(args);
     case 'rank': return cmdRank(args[0]);
     case 'ids': return cmdIds(args[0]);

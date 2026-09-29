@@ -32,7 +32,7 @@ Outputs: fixed code in the working tree, merged compliance results, milestone en
    `large-sweep` never gates; just state the file count up front. No approval -> skip this rule.
 
 ### Single path
-1. Run the fixer for `Fix: <ID>` (follow `.eqc/prompts/fixer.md`).
+1. Run the fixer for `Fix: <ID>` (follow `.eqc/prompts/fixer.md`). Pass `approved: <gate>` (e.g. `approved: package-install`) for every gate the user approved in Step 3.2.
 2. `BLOCKED` -> relay exactly what is needed, go to next rule.
 3. `FAILED` -> relay the real error; ask the user: retry, skip, or debug. To debug: debug systematically: reproduce, hypothesise, verify. Then next rule.
 4. `DONE`/`DONE_WITH_DEVIATION` -> take the COMPLIANCE json block from the reply, write it to a temp file wrapped as `{"results":[<entry>]}`, run `merge <file>`.
@@ -45,7 +45,7 @@ Outputs: fixed code in the working tree, merged compliance results, milestone en
    - Plan exists: say "resuming".
 2. Loop:
    1. `chunks <ID>` -> next unticked chunk and its tag.
-   2. Run the fixer for `Fix: <ID> chunk <n>`. Relay one line.
+   2. Run the fixer for `Fix: <ID> chunk <n>`, passing the same `approved: <gate>` lines. Relay one line.
    3. `FAILED` -> retry that chunk once (normal model); still failed -> stop, report, `milestone add` with status `partial` or `failed`, go to next rule.
    4. `DONE` -> ask the user: Continue / Stop here (resumable later via `eqc fix <ID>`). Stop -> `milestone add` status `partial`, next rule.
 3. When `chunks <ID>` reports all done: run one audit of `<ID>` (`.eqc/prompts/audit.md`), temp file -> `merge`, then `milestone add`, then report before -> after.

@@ -6,11 +6,12 @@ Outputs: the markdown report (from the engine) plus a one-line "next: eqc fix". 
 ## Rules
 - All state goes through `node .eqc/bin/eqc.mjs <cmd>` (run from the repo root). Never read `rules.json` / `compliance.json` whole. Never write `compliance.json` or the human report by hand; `merge` regenerates the report.
 - Do not parse or audit by hand when you can delegate: use `.eqc/prompts/index.md` and `.eqc/prompts/audit.md`.
-- Sub-tasks: if you can run sub-tasks in parallel (sub-agents), run one audit per tier in parallel, each instructed to follow `.eqc/prompts/audit.md`. Otherwise run them one after another yourself. A cheaper/faster model is acceptable for mechanical chunks (config `cheap_model`).
+- Sub-tasks: if you can run sub-tasks in parallel (sub-agents), run one audit per tier in parallel, each instructed to follow `.eqc/prompts/audit.md`. Otherwise run them one after another yourself. Without sub-agents, you play each role yourself: follow the sub-prompt, then continue as the orchestrator. Its "reply" becomes your intermediate result. A cheaper/faster model is acceptable for mechanical chunks (config `cheap_model`).
 - Temp files: use a temporary file outside the repo, or `.eqc/tmp/` (gitignored).
 - Engine exit code 2 = no index yet.
 
 ## Step 0 — classify the input (take exactly one path)
+First, if `config get standard.source` is `example`, say once before indexing: "Auditing the bundled example standard — for real use, run `eqc check <path-to-your-standard.md>`." Then proceed.
 - Empty and an index exists (`report` does not exit 2) -> Path A.
 - Empty and no index -> Path D using `config get standard.path`.
 - `recheck` or `full` (case-insensitive, nothing else) -> Path B.
@@ -40,13 +41,14 @@ Outputs: the markdown report (from the engine) plus a one-line "next: eqc fix". 
    - URL: fetch the content with whatever tool you have and write it to a temp file. If you cannot fetch it, stop and report the error; do not guess.
    - Empty input: use `config get standard.path`.
    - Text after the source that reads as instructions: keep verbatim as indexing instructions.
-2. Reset: delete `.eqc/rules.json` and `.eqc/compliance.json` only. Keep `.eqc/milestones.json` and `.eqc/plans/` as history.
-3. Index: follow `.eqc/prompts/index.md` with the source file, the instructions, and `config get stack.tags`. Relay doc version, rule counts per tier, excluded rules and conflicts.
+2. Reset: run `node .eqc/bin/eqc.mjs reset`. It keeps milestones, plans, config and the standard as history.
+3. Index: follow `.eqc/prompts/index.md` with the source file, the instructions, and `config get stack.tags`. Show the user the index summary (doc version, rule counts per tier, excluded rules, conflicts) now, before the report.
 4. Run `check-ids <source file>`. If exit 1, stop: show the printed problems and do not audit.
 5. Full audit: `ids full`, one audit per tier line (as in Path B step 2).
 6. Temp file -> `merge` per result.
 7. Print `report`, then Closing.
 
 ## Closing
-- After the report, add one line naming what blocks the next compliance level (from the fail/partial lines shown).
+- After the report, add one line naming what blocks the next compliance level (from the fail/partial lines shown, plus any unaudited count; a `NONE` level means the lowest tier still has unaudited rules, so suggest `eqc check full`). If the level is HARD_FAIL, the next level is the lowest tier: name its fails.
+- After Path D only, also say: "Commit `.eqc/` (tmp/ is ignored) and the report so teammates share the level."
 - End with: `next: eqc fix`
