@@ -1,0 +1,145 @@
+# Concepts
+
+eqc-kit helps you and your AI coding agent raise a project's compliance with a written quality standard. This page is the mental model. Every term here is used the same way across the rest of the docs.
+
+## The loop
+
+```
+Standard --> Index --> Audit --> Verdicts --> Compliance level
+   ^                                               |
+   |                                               v
+   +------ (edit the doc, re-index)     Fix --> re-Audit --> ...
+```
+
+1. You supply a **Standard**: a Markdown document of tiers and numbered rules.
+2. The agent turns it into an **Index** (`.eqc/rules.json`).
+3. The agent **Audits** rules against your code and records a **Verdict** for each, with evidence.
+4. The **Engine** computes the **Compliance level** from the Verdicts.
+5. The agent **Fixes** failing rules, one at a time, and re-audits them. The level goes up.
+
+## Division of labor
+
+| Who | Does | Never does |
+|---|---|---|
+| The **Engine** (`.eqc/bin/eqc.mjs`) | Stores state, validates input, merges Verdicts, computes the Compliance level, ranks fixes, writes the report | Read or judge your code |
+| The **agent**, following **Prompts** (`.eqc/prompts/*.md`) | Reads the Standard, inspects code, decides pass/partial/fail, writes fixes | Compute the level or hand-edit state files |
+
+The split keeps the maths reproducible: two teammates with the same Verdicts always get the same level. It also keeps the judgment where an AI agent is useful. See [engine-commands.md](engine-commands.md) for the Engine.
+
+## The terms
+
+**Standard.** Your document. Example: `standards/example.md`, with Bronze, Silver and Gold sections. See [writing-a-standard.md](writing-a-standard.md).
+
+**Tier.** One ordered section of the Standard, lowest first. The Standard names them (Bronze/Silver/Gold, L1-L3, anything). 2 to 5 tiers is normal.
+
+**Rule.** A numbered entry in a Tier. Its ID is `<TIERID>-<number printed in the doc>`: `SILVER-2` is entry `2.` under the Silver heading. IDs are never renumbered.
+
+**Applicability tag.** A stack label such as `[web]` or `[backend]` on a Rule. At Index time, Rules whose tags do not match your project's stack are left out. `[all]` or no tag means every project.
+
+**Index.** `.eqc/rules.json`: every Rule with its ID, Tier, tags, detail and the line it came from.
+
+**Audit.** The agent evaluates a list of Rules against the codebase.
+
+**Verdict.** The result for one Rule, with evidence:
+
+| Verdict | Meaning |
+|---|---|
+| `pass` | Fully met across the codebase |
+| `partial` | Met in some places or in part |
+| `fail` | Not met |
+
+Example: `{"id":"BRONZE-6","status":"partial","evidence":"npm audit runs in CI but only warns."}`.
+
+**Compliance level.** The highest Tier reached. See below.
+
+**Effort tier, Blast radius, Gate.** How big a fix is, how far it reaches, and when to stop and ask. See below.
+
+**Plan and Chunk.** A reviewable, resumable fix for a big Rule. See below.
+
+**Milestone.** A log entry for a finished fix attempt.
+
+**Prompt.** A Markdown playbook the agent follows. They never name a specific AI tool.
+
+## How the Compliance level is computed
+
+Rules:
+
+- Count `fail` Verdicts per Tier. Partials do not count.
+- If the lowest Tier has any fail, the level is `HARD_FAIL`.
+- Otherwise the level is the highest Tier such that it and every Tier below it have zero fails.
+
+Worked example, using the example Standard after a real audit (from the [engine-commands](engine-commands.md) walkthrough):
+
+| Tier | Pass | Partial | Fail | Total |
+|---|---|---|---|---|
+| Bronze | 5 | 1 | 0 | 6 |
+| Silver | 4 | 0 | 2 | 6 |
+| Gold | 4 | 0 | 1 | 5 |
+
+- Bronze has 0 fails, so it is reached. The one partial does not block it.
+- Silver has 2 fails, so it is not reached.
+- Gold has 1 fail, but that does not matter: Silver already stopped the climb.
+- Level: **Bronze**. Fixing `SILVER-2` and `SILVER-3` would reach Silver. Gold is then blocked only by `GOLD-1`.
+
+HARD_FAIL case: if `BRONZE-1` is re-audited as `fail`, Bronze has a fail. The lowest Tier is broken, so nothing is reached, whatever Silver and Gold say. The Engine prints `level: HARD_FAIL` and the report shows `Compliance level: HARD_FAIL`.
+
+## Effort tier, Blast radius and Gates
+
+For each `fail` or `partial` Verdict the auditor adds:
+
+- `file_count`: distinct files that must change.
+- `effort_tier`: `trivial` (1 file or config), `small` (2-5 files), `medium` (6-30), `large` (30+ files, or a new package, or an architecture change).
+- `blast_radius`: zero or more tags.
+
+| Blast radius tag | Meaning | Gate |
+|---|---|---|
+| `ci-config` | Fix touches CI/pipeline files | Asks for approval if `gates.ci_config` is true |
+| `package-install` | Fix adds, removes or upgrades a dependency | Asks if `gates.package_install` is true |
+| `architecture` | Fix changes an already-standardised pattern (framework, state library, HTTP client, ORM, routing) | Asks if `gates.architecture` is true |
+| `large-sweep` | Many files, one mechanical reason | Never gates; the file count is stated up front |
+
+Also: a Rule in the highest Tier asks for approval if `gates.top_tier` is true. The Gates come from `.eqc/config.json`; read one with `config get`.
+
+The effort tier also picks the route. `trivial` and `small` are fixed in a single pass. `medium` and `large` get a Plan and are fixed Chunk by Chunk. A fix that needs a package change or a new architecture is never done silently: it ends `BLOCKED` until you decide.
+
+## Plans and Chunks
+
+A Plan lives at `.eqc/plans/<ID>.md`. The planner reads code, never edits it, and writes:
+
+```
+# SILVER-3 — Structured logging, no stray debug prints
+verify: grep -rn "console\.log" src | wc -l   (must print 0)
+approach: Replace console.log with the logger wrapper in src/lib/logger.js.
+recipe: console.log(x) -> logger.debug(x). Keep genuinely dynamic CLI output in scripts/ as is.
+## Chunks
+- [x] 1 [mechanical] src/api/a.js, src/api/b.js
+- [ ] 2 [mechanical] src/ui/c.js, src/ui/d.js
+- [ ] 3 [judgment] src/server.js
+```
+
+- `verify` is one command whose output proves the whole Rule is met.
+- A Chunk is at most about 8 files from the same folder, and leaves the project working.
+- `mechanical` means the recipe applies with no per-file decisions. `judgment` needs thought. Mechanical Chunks come first.
+- The fixer ticks `[x]` when a Chunk succeeds. `chunks <ID>` reads the boxes, so a Plan can be stopped and resumed at the next unticked Chunk.
+
+You may edit a Plan before approving it.
+
+## Milestones
+
+Each fix attempt ends with a Milestone in `.eqc/milestones.json`: rule, tier, date, one-line summary and status `done`, `partial`, `blocked` or `failed`. It is a history log. A rebuild from a new Standard keeps it.
+
+## What lives in `.eqc/`
+
+| Path | What | Commit? |
+|---|---|---|
+| `bin/eqc.mjs` | The Engine, one file, Node 18+, no dependencies | Yes |
+| `prompts/` | The Prompts | Yes |
+| `config.json` | Report path, stack tags, Gates | Yes |
+| `rules.json` | The Index | Yes |
+| `compliance.json` | Latest Verdict per Rule, tier summary, level | Yes |
+| `milestones.json` | Fix history | Yes |
+| `plans/` | Plans and Chunk progress | Yes |
+| `doc-meta.md` | Notes from indexing (version, skipped rules, conflicts) | Yes |
+| `tmp/` | Scratch files (audit output waiting to be merged) | No, ignore it |
+
+Commit everything except `.eqc/tmp/`. Teammates then share the same Engine version, Index and Verdicts. The human-readable report is written to the path in `config.json` (`report_path`) and is regenerated by `merge`; do not edit it by hand.
