@@ -28,16 +28,17 @@ Outputs: fixed code in the working tree, merged compliance results, milestone en
    - blast_radius contains `architecture` and gates.architecture is true; or
    - blast_radius contains `package-install` and gates.package_install is true; or
    - blast_radius contains `ci-config` and gates.ci_config is true; or
-   - the rule's tier is the highest-order tier and gates.top_tier is true.
+   - the rule's tier is the top tier (the last line printed by `ids full`) and gates.top_tier is true.
    `large-sweep` never gates; just state the file count up front. No approval -> skip this rule.
 
 ### Single path
 1. Run the fixer for `Fix: <ID>` (follow `.eqc/prompts/fixer.md`). Pass `approved: <gate>` (e.g. `approved: package-install`) for every gate the user approved in Step 3.2.
 2. `BLOCKED` -> relay exactly what is needed, go to next rule.
 3. `FAILED` -> relay the real error; ask the user: retry, skip, or debug. To debug: debug systematically: reproduce, hypothesise, verify. Then next rule.
-4. `DONE`/`DONE_WITH_DEVIATION` -> take the COMPLIANCE json block from the reply, write it to a temp file wrapped as `{"results":[<entry>]}`, run `merge <file>`.
-5. Run `milestone add '{"rule_id":"<ID>","tier":"<TIER>","status":"done|partial|blocked|failed","summary":"<one line>"}'`.
-6. Report before -> after status and any compliance-level change (from the merge output).
+4. `DONE`/`DONE_WITH_DEVIATION` -> only after the fixer has finished and verified (never merge while edits are still in progress), take the COMPLIANCE json block from the reply, write it to a temp file wrapped as `{"results":[<entry>]}`, run `merge <file>`.
+5. Run `milestone add '{"rule_id":"<ID>","tier":"<TIER>","status":"<status>","summary":"<one line>"}'`. Map fixer STATUS: DONE and DONE_WITH_DEVIATION -> `done`, BLOCKED -> `blocked`, FAILED -> `failed`; a chunked rule stopped early -> `partial`.
+6. If other fail/partial rules cite a file you just changed in their evidence, suggest `eqc check <those IDs>`, since their evidence is now stale.
+7. Report before -> after status and any compliance-level change (from the merge output).
 
 ### Chunked path
 1. Run `chunks <ID>`.

@@ -13,12 +13,14 @@ Outputs: edited working tree (never committed unless the orchestrator's config s
 1. Read the project's own conventions first, if present: AGENTS.md and similar agent-instruction files, CONTRIBUTING.md, lint/format configs. Follow them.
 2. Detect verification tooling from the project itself (package.json scripts, Makefile, pyproject, go test, gradle, etc.). Never assume a command exists; check first.
 
+- If a fix removes a committed secret (key, token, password), always tell the user it is still in git history and must be rotated at its provider.
+
 ## Mode 1 — `Fix: <ID>`
 1. Run `node .eqc/bin/eqc.mjs get <ID>`. Trust the evidence as a recent pointer.
 2. Plan silently: files to change, minimal change per file, and the check that proves it (lint, tests, or a grep showing the pattern is gone).
 3. If the rule as evidenced needs a package change or architecture change and the dispatch does not carry the matching `approved:` line: STOP, `STATUS: BLOCKED`.
 4. Implement. If the real code differs from the evidence (file moved, gap narrower/wider), adapt and record it as a deviation.
-5. Self-verify: run the check. On failure, fix and re-verify a reasonable number of times. If still failing, `STATUS: FAILED` with the real error.
+5. Self-verify: run the check. If the project has a check configured but it cannot run (e.g. dependencies not installed), do not install anything: use the strongest check that does run (syntax check, targeted grep, a single test file) and say exactly which check was skipped and why. On failure, fix and re-verify a reasonable number of times. If still failing, `STATUS: FAILED` with the real error.
 6. Reply exactly:
 ```
 RULE: <id> — <title>
