@@ -1,0 +1,259 @@
+{
+  "schema": 1,
+  "standard": {
+    "title": "Example Engineering Quality Standard",
+    "version": "1.0",
+    "date": "2026-01-15",
+    "source_path": "standards/example.md"
+  },
+  "stack_tags": [
+    "all"
+  ],
+  "indexed_at": "2026-01-15",
+  "tiers": [
+    {
+      "id": "BRONZE",
+      "name": "Bronze",
+      "order": 1,
+      "section_heading": "Bronze"
+    },
+    {
+      "id": "SILVER",
+      "name": "Silver",
+      "order": 2,
+      "section_heading": "Silver"
+    },
+    {
+      "id": "GOLD",
+      "name": "Gold",
+      "order": 3,
+      "section_heading": "Gold"
+    }
+  ],
+  "rules": [
+    {
+      "id": "BRONZE-1",
+      "tier": "BRONZE",
+      "order": 1,
+      "title": "CI runs on every pull request",
+      "detail": "A pipeline builds and tests each pull request automatically. Merging is blocked when the pipeline fails.",
+      "detection_hint": "Look for evidence in repo config and CI files that: A pipeline builds and tests each pull request automatically.",
+      "applies_to": [
+        "all"
+      ],
+      "conflict_note": null,
+      "source_line": 14
+    },
+    {
+      "id": "BRONZE-2",
+      "tier": "BRONZE",
+      "order": 2,
+      "title": "Linter enforced",
+      "detail": "A linter is configured and runs in CI with zero errors. Warnings do not hide real problems.",
+      "detection_hint": "Look for evidence in repo config and CI files that: A linter is configured and runs in CI with zero errors.",
+      "applies_to": [
+        "all"
+      ],
+      "conflict_note": null,
+      "source_line": 15
+    },
+    {
+      "id": "BRONZE-3",
+      "tier": "BRONZE",
+      "order": 3,
+      "title": "Code formatter configured",
+      "detail": "A formatter is configured and applied consistently, either by CI check or pre-commit hook.",
+      "detection_hint": "Look for evidence in repo config and CI files that: A formatter is configured and applied consistently, either by CI check or pre-commit hook.",
+      "applies_to": [
+        "all"
+      ],
+      "conflict_note": null,
+      "source_line": 16
+    },
+    {
+      "id": "BRONZE-4",
+      "tier": "BRONZE",
+      "order": 4,
+      "title": "README has setup instructions",
+      "detail": "A new developer can install, run, and test the project by following the README alone.",
+      "detection_hint": "Look for evidence in repo config and CI files that: A new developer can install, run, and test the project by following the README alone.",
+      "applies_to": [
+        "all"
+      ],
+      "conflict_note": null,
+      "source_line": 17
+    },
+    {
+      "id": "BRONZE-5",
+      "tier": "BRONZE",
+      "order": 5,
+      "title": "No committed secrets",
+      "detail": "Source control contains no API keys, passwords, or private tokens. Secrets come from the environment or a secret manager.",
+      "detection_hint": "Look for evidence in repo config and CI files that: Source control contains no API keys, passwords, or private tokens.",
+      "applies_to": [
+        "all"
+      ],
+      "conflict_note": null,
+      "source_line": 18
+    },
+    {
+      "id": "BRONZE-6",
+      "tier": "BRONZE",
+      "order": 6,
+      "title": "Dependency vulnerability audit",
+      "detail": "Dependencies are audited for known vulnerabilities in CI, and high-severity findings block the build.",
+      "detection_hint": "Look for evidence in repo config and CI files that: Dependencies are audited for known vulnerabilities in CI, and high-severity findings block the build.",
+      "applies_to": [
+        "all"
+      ],
+      "conflict_note": null,
+      "source_line": 19
+    },
+    {
+      "id": "SILVER-1",
+      "tier": "SILVER",
+      "order": 1,
+      "title": "Unit tests exist",
+      "detail": "Core logic has automated unit tests that run in CI and pass reliably.",
+      "detection_hint": "Look for evidence in repo config and CI files that: Core logic has automated unit tests that run in CI and pass reliably.",
+      "applies_to": [
+        "all"
+      ],
+      "conflict_note": null,
+      "source_line": 25
+    },
+    {
+      "id": "SILVER-2",
+      "tier": "SILVER",
+      "order": 2,
+      "title": "Coverage threshold enforced",
+      "detail": "CI enforces a minimum test coverage percentage, and the build fails when it drops below it.",
+      "detection_hint": "Look for evidence in repo config and CI files that: CI enforces a minimum test coverage percentage, and the build fails when it drops below it.",
+      "applies_to": [
+        "all"
+      ],
+      "conflict_note": null,
+      "source_line": 26
+    },
+    {
+      "id": "SILVER-3",
+      "tier": "SILVER",
+      "order": 3,
+      "title": "Structured logging, no stray debug prints",
+      "detail": "Code uses a logging wrapper with levels. Raw print or console debugging statements do not ship.",
+      "detection_hint": "Look for evidence in repo config and CI files that: Code uses a logging wrapper with levels.",
+      "applies_to": [
+        "all"
+      ],
+      "conflict_note": null,
+      "source_line": 27
+    },
+    {
+      "id": "SILVER-4",
+      "tier": "SILVER",
+      "order": 4,
+      "title": "Error tracking enabled",
+      "detail": "Unhandled errors are reported to an error tracking service with enough context to act on.",
+      "detection_hint": "Look for evidence in repo config and CI files that: Unhandled errors are reported to an error tracking service with enough context to act on.",
+      "applies_to": [
+        "web",
+        "backend"
+      ],
+      "conflict_note": null,
+      "source_line": 28
+    },
+    {
+      "id": "SILVER-5",
+      "tier": "SILVER",
+      "order": 5,
+      "title": "Configuration comes from the environment",
+      "detail": "URLs, keys, and feature flags are read from environment or config files, never hardcoded in source.",
+      "detection_hint": "Look for evidence in repo config and CI files that: URLs, keys, and feature flags are read from environment or config files, never hardcoded in source.",
+      "applies_to": [
+        "all"
+      ],
+      "conflict_note": null,
+      "source_line": 29
+    },
+    {
+      "id": "SILVER-6",
+      "tier": "SILVER",
+      "order": 6,
+      "title": "Database migrations are versioned",
+      "detail": "Schema changes are applied through versioned migration files kept in source control.",
+      "detection_hint": "Look for evidence in repo config and CI files that: Schema changes are applied through versioned migration files kept in source control.",
+      "applies_to": [
+        "backend"
+      ],
+      "conflict_note": null,
+      "source_line": 30
+    },
+    {
+      "id": "GOLD-1",
+      "tier": "GOLD",
+      "order": 1,
+      "title": "Release automation",
+      "detail": "Versioning, changelog, and publishing happen through an automated pipeline, not manual steps.",
+      "detection_hint": "Look for evidence in repo config and CI files that: Versioning, changelog, and publishing happen through an automated pipeline, not manual steps.",
+      "applies_to": [
+        "all"
+      ],
+      "conflict_note": null,
+      "source_line": 36
+    },
+    {
+      "id": "GOLD-2",
+      "tier": "GOLD",
+      "order": 2,
+      "title": "Observability dashboards",
+      "detail": "Key service metrics such as latency, errors, and saturation are visible on shared dashboards with alerts.",
+      "detection_hint": "Look for evidence in repo config and CI files that: Key service metrics such as latency, errors, and saturation are visible on shared dashboards with alerts.",
+      "applies_to": [
+        "backend"
+      ],
+      "conflict_note": null,
+      "source_line": 37
+    },
+    {
+      "id": "GOLD-3",
+      "tier": "GOLD",
+      "order": 3,
+      "title": "Architecture decisions recorded",
+      "detail": "Significant design decisions are documented as short ADRs or architecture docs kept next to the code.",
+      "detection_hint": "Look for evidence in repo config and CI files that: Significant design decisions are documented as short ADRs or architecture docs kept next to the code.",
+      "applies_to": [
+        "all"
+      ],
+      "conflict_note": null,
+      "source_line": 38
+    },
+    {
+      "id": "GOLD-4",
+      "tier": "GOLD",
+      "order": 4,
+      "title": "Performance budget defined",
+      "detail": "A measurable budget for load time, bundle size, or startup time exists and is checked in CI.",
+      "detection_hint": "Look for evidence in repo config and CI files that: A measurable budget for load time, bundle size, or startup time exists and is checked in CI.",
+      "applies_to": [
+        "web",
+        "mobile"
+      ],
+      "conflict_note": null,
+      "source_line": 39
+    },
+    {
+      "id": "GOLD-5",
+      "tier": "GOLD",
+      "order": 5,
+      "title": "Accessibility and crash reporting",
+      "detail": "Interactive elements have accessible labels and contrast, and mobile builds report crashes to a crash reporting service.",
+      "detection_hint": "Look for evidence in repo config and CI files that: Interactive elements have accessible labels and contrast, and mobile builds report crashes to a crash reporting service.",
+      "applies_to": [
+        "web",
+        "mobile"
+      ],
+      "conflict_note": null,
+      "source_line": 40
+    }
+  ]
+}

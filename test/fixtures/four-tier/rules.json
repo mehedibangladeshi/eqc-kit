@@ -1,0 +1,91 @@
+{
+  "schema": 1,
+  "standard": {
+    "title": "Tiny Standard",
+    "version": "0.1",
+    "date": "2026-01-01",
+    "source_path": "tiny.md"
+  },
+  "stack_tags": [],
+  "indexed_at": "2026-01-01",
+  "tiers": [
+    {
+      "id": "ONE",
+      "name": "One",
+      "order": 1,
+      "section_heading": "One"
+    },
+    {
+      "id": "TWO",
+      "name": "Two",
+      "order": 2,
+      "section_heading": "Two"
+    },
+    {
+      "id": "THREE",
+      "name": "Three",
+      "order": 3,
+      "section_heading": "Three"
+    },
+    {
+      "id": "FOUR",
+      "name": "Four",
+      "order": 4,
+      "section_heading": "Four"
+    }
+  ],
+  "rules": [
+    {
+      "id": "ONE-1",
+      "tier": "ONE",
+      "order": 1,
+      "title": "Rule ONE 1",
+      "detail": "d",
+      "detection_hint": "h",
+      "applies_to": [
+        "all"
+      ],
+      "conflict_note": null,
+      "source_line": 0
+    },
+    {
+      "id": "TWO-1",
+      "tier": "TWO",
+      "order": 1,
+      "title": "Rule TWO 1",
+      "detail": "d",
+      "detection_hint": "h",
+      "applies_to": [
+        "all"
+      ],
+      "conflict_note": null,
+      "source_line": 0
+    },
+    {
+      "id": "THREE-1",
+      "tier": "THREE",
+      "order": 1,
+      "title": "Rule THREE 1",
+      "detail": "d",
+      "detection_hint": "h",
+      "applies_to": [
+        "all"
+      ],
+      "conflict_note": null,
+      "source_line": 0
+    },
+    {
+      "id": "FOUR-1",
+      "tier": "FOUR",
+      "order": 1,
+      "title": "Rule FOUR 1",
+      "detail": "d",
+      "detection_hint": "h",
+      "applies_to": [
+        "all"
+      ],
+      "conflict_note": null,
+      "source_line": 0
+    }
+  ]
+}

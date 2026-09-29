@@ -1,0 +1,66 @@
+{
+  "schema": 1,
+  "standard": {
+    "title": "Tiny Standard",
+    "version": "0.1",
+    "date": "2026-01-01",
+    "source_path": "tiny.md"
+  },
+  "stack_tags": [],
+  "indexed_at": "2026-01-01",
+  "tiers": [
+    {
+      "id": "BASE",
+      "name": "Base",
+      "order": 1,
+      "section_heading": "Base"
+    },
+    {
+      "id": "TOP",
+      "name": "Top",
+      "order": 2,
+      "section_heading": "Top"
+    }
+  ],
+  "rules": [
+    {
+      "id": "BASE-1",
+      "tier": "BASE",
+      "order": 1,
+      "title": "Rule BASE 1",
+      "detail": "d",
+      "detection_hint": "h",
+      "applies_to": [
+        "all"
+      ],
+      "conflict_note": null,
+      "source_line": 0
+    },
+    {
+      "id": "BASE-2",
+      "tier": "BASE",
+      "order": 2,
+      "title": "Rule BASE 2",
+      "detail": "d",
+      "detection_hint": "h",
+      "applies_to": [
+        "all"
+      ],
+      "conflict_note": null,
+      "source_line": 0
+    },
+    {
+      "id": "TOP-1",
+      "tier": "TOP",
+      "order": 1,
+      "title": "Rule TOP 1",
+      "detail": "d",
+      "detection_hint": "h",
+      "applies_to": [
+        "all"
+      ],
+      "conflict_note": null,
+      "source_line": 0
+    }
+  ]
+}
