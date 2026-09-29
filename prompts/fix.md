@@ -24,7 +24,7 @@ Outputs: fixed code in the working tree, merged compliance results, milestone en
    - status `pass` -> print its evidence, suggest `eqc check <ID>` if a regression is suspected, go to next rule.
    - effort_tier `trivial`/`small`/missing -> Single path.
    - effort_tier `medium`/`large` -> Chunked path.
-2. Gates: read `config get gates.package_install`, `gates.ci_config`, `gates.architecture`, `gates.top_tier`, `gates.auto_commit`. Pause and get explicit approval (say which trigger fired, show evidence/notes) if:
+2. Gates: read `config get gates.package_install`, `gates.ci_config`, `gates.architecture`, `gates.top_tier`, `gates.auto_commit`. If a gate key is missing or `config get` exits 1, use the safe default: every gate `true`, `auto_commit` `false`. Pause and get explicit approval (say which trigger fired, show evidence/notes) if:
    - blast_radius contains `architecture` and gates.architecture is true; or
    - blast_radius contains `package-install` and gates.package_install is true; or
    - blast_radius contains `ci-config` and gates.ci_config is true; or

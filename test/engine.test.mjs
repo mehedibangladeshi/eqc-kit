@@ -161,7 +161,7 @@ test('merge: writes compliance, strips effort on pass, regenerates report', () =
   assert.equal(c.results.find(x => x.id === 'GOLD-1').effort_tier, undefined);
   assert.deepEqual(c.tier_summary.BRONZE, { pass: 0, fail: 1, partial: 0, total: 6 });
   let md = fs.readFileSync(reportFile, 'utf8');
-  assert.match(md, /Compliance level: HARD FAIL/);
+  assert.match(md, /Compliance level: HARD_FAIL/);
   assert.match(md, /\| Bronze \| 0 \| 0 \| 1 \| 6 \|/);
   assert.match(md, /- \*\*BRONZE-1\*\* — CI runs on every pull request — no pipeline/);
   assert.match(md, /## Partials/);
@@ -279,7 +279,7 @@ test('missing index exits 2 with message', () => {
   for (const cmd of [['report'], ['rank'], ['ids', 'full'], ['get', 'A-1'], ['check-ids', EXAMPLE_MD]]) {
     const r = sb.run(...cmd);
     assert.equal(r.status, 2, cmd.join(' '));
-    assert.match(r.stdout, /^No index yet — run the EQC check prompt with a standard doc first\./);
+    assert.match(r.stdout, /^No index yet — run `eqc check` in your AI agent first/);
   }
 });
 

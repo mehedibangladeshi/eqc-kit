@@ -11,7 +11,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const EFFORT_ORDER = { trivial: 0, small: 1, medium: 2, large: 3 };
 const STATUSES = ['pass', 'partial', 'fail'];
 const MILESTONE_STATUSES = ['done', 'partial', 'blocked', 'failed'];
-const NO_INDEX_MSG = 'No index yet — run the EQC check prompt with a standard doc first.';
+const NO_INDEX_MSG = 'No index yet — run `eqc check` in your AI agent first (it indexes the standard).';
 
 // ---------- paths ----------
 
@@ -246,7 +246,7 @@ export function buildReport(rulesDoc, compliance) {
   const std = rulesDoc.standard || {};
   const tierName = new Map(tiers.map(t => [t.id, t.name]));
   const cur = compliance.current_tier;
-  const level = cur === 'HARD_FAIL' ? 'HARD FAIL' : (tierName.get(cur) || cur || 'not audited');
+  const level = cur === 'HARD_FAIL' ? 'HARD_FAIL' : (tierName.get(cur) || cur || 'not audited');
   const out = [];
   out.push(`# ${std.title || 'EQC'} — compliance report`, '');
   out.push(`Standard: ${std.title || '?'} v${std.version || '?'}`);
