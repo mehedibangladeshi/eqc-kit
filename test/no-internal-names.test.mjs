@@ -32,3 +32,11 @@ test('tracked and untracked files contain no internal names', () => {
 test('commit messages contain no internal names', () => {
   assert.deepEqual(hits(git('log', '--format=%B')), []);
 });
+
+test('commit identities contain no internal names', () => {
+  assert.deepEqual(hits(git('log', '--format=%an %ae %cn %ce')), []);
+});
+
+test('commits carry no AI co-author trailers', () => {
+  assert.doesNotMatch(git('log', '--format=%B'), /co-authored-by|noreply@anthropic|generated with/i);
+});

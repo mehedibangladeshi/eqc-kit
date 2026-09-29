@@ -4,7 +4,15 @@
   "description": "A tool-agnostic kit that helps developers raise their project's compliance with a tiered engineering-quality standard.",
   "type": "module",
   "license": "MIT",
-  "author": "Mehedi Hasan",
+  "author": "Mehedi Hasan <mehedipy@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mehedibangladeshi/eqc-kit.git"
+  },
+  "homepage": "https://github.com/mehedibangladeshi/eqc-kit#readme",
+  "bugs": {
+    "url": "https://github.com/mehedibangladeshi/eqc-kit/issues"
+  },
   "bin": {
     "eqc-kit": "bin/cli.mjs"
   },
