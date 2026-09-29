@@ -284,7 +284,7 @@ async function update(root, opts) {
   const io = makeAsker();
   try {
     const entries = generate(next);
-    const res = await sync(root, entries, old.files, { yes: opts.yes, io });
+    const res = await sync(root, entries, old.files, { yes: opts.yes, force: opts.force, io });
     const nm = manifest(res.files);
     if (JSON.stringify(nm) !== JSON.stringify(old)) writeJson(path.join(root, '.eqc/manifest.json'), nm);
     console.log(`update: ${res.written.length} written, ${res.kept.length} kept (edited), ${res.same} unchanged`);
@@ -300,18 +300,29 @@ async function uninstall(root, opts) {
   const io = makeAsker();
   try {
     if (!opts.yes && !(await io.yn(opts.purge ? 'Remove ALL of .eqc/ (state included) and managed files?' : 'Remove managed files (state in .eqc/ is kept)?', false))) return console.log('aborted.');
+    const agentsP = path.join(root, 'AGENTS.md');
+    for (const [rel, h] of Object.entries(mf.files)) {
+      const isBlock = rel === BLOCK_KEY, p = path.join(root, isBlock ? 'AGENTS.md' : rel);
+      const t = read(p), r = isBlock && t !== null ? blockRange(t) : null;
+      const cur = isBlock ? (r ? t.slice(...r) : null) : t;
+      if (cur === null) continue;
+      if (sha(cur) !== h && !opts.force) {
+        const label = isBlock ? 'edited eqc-kit block in AGENTS.md' : `edited ${rel}`;
+        if (opts.yes || !(await io.yn(`remove ${label}?`, false))) { console.warn(`warning: kept ${label} (use --force to remove)`); continue; }
+      }
+      if (isBlock) {
+        const rest = (t.slice(0, r[0]).replace(/\s+$/, '') + '\n\n' + t.slice(r[1]).replace(/^\s+/, '')).trim();
+        if (rest) fs.writeFileSync(agentsP, rest + '\n'); else fs.rmSync(agentsP);
+      } else fs.rmSync(p, { force: true });
+    }
   } finally { io.close(); }
-  for (const rel of Object.keys(mf.files)) {
-    if (rel === BLOCK_KEY) {
-      const p = path.join(root, 'AGENTS.md'), t = read(p), r = t && blockRange(t);
-      if (!r) continue;
-      const rest = (t.slice(0, r[0]).replace(/\s+$/, '') + '\n\n' + t.slice(r[1]).replace(/^\s+/, '')).trim();
-      if (rest) fs.writeFileSync(p, rest + '\n'); else fs.rmSync(p);
-    } else fs.rmSync(path.join(root, rel), { force: true });
-  }
   for (const d of list(path.join(root, '.claude/skills')).filter(d => d.startsWith('eqc-'))) {
     const p = path.join(root, '.claude/skills', d);
     if (list(p).length === 0) fs.rmdirSync(p);
+  }
+  for (const d of ['.claude/skills', '.claude/agents', '.claude']) {
+    const p = path.join(root, d);
+    if (fs.existsSync(p) && list(p).length === 0) fs.rmdirSync(p);
   }
   for (const s of ['bin', 'prompts', 'manifest.json']) fs.rmSync(path.join(root, '.eqc', s), { recursive: true, force: true });
   if (opts.purge) fs.rmSync(path.join(root, '.eqc'), { recursive: true, force: true });
@@ -344,12 +355,14 @@ function doctor(root) {
   else {
     const c = cfg?.adapters ? generate(cfg) : [];
     const byRel = new Map(c.map(e => [e.rel, e]));
-    let missing = 0, modified = 0;
+    let missing = 0;
+    const modified = [];
     for (const [rel, h] of Object.entries(mf.files)) {
       const cur = byRel.has(rel) ? current(root, byRel.get(rel)) : read(path.join(root, rel));
-      if (cur === null) { missing++; out('✖', `managed file missing: ${rel}`); } else if (sha(cur) !== h) { modified++; out('⚠', `modified since install: ${rel}`); }
+      if (cur === null) { missing++; out('✖', `managed file missing: ${rel}`); } else if (sha(cur) !== h) modified.push(rel);
     }
-    if (!missing && !modified) out('✔', `${Object.keys(mf.files).length} managed files present and unmodified`);
+    if (modified.length) out('⚠', `${modified.length} managed file(s) modified: ${modified.join(', ')}`);
+    if (!missing && !modified.length) out('✔', `${Object.keys(mf.files).length} managed files present and unmodified`);
   }
   out(fs.existsSync(path.join(root, '.eqc/rules.json')) ? '✔' : '⚠', fs.existsSync(path.join(root, '.eqc/rules.json')) ? 'standard indexed (rules.json)' : 'not indexed yet: run eqc check');
   process.exitCode = bad ? 1 : 0;

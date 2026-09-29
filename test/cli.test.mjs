@@ -202,7 +202,7 @@ test('doctor: pass, then fail when engine is broken', () => {
   const bad = cli(r, ['doctor']);
   assert.equal(bad.status, 1);
   assert.match(bad.stdout, /✖ engine selftest failed/);
-  assert.match(bad.stdout, /⚠ modified since install: .eqc\/bin\/eqc.mjs/);
+  assert.match(bad.stdout, /⚠ 1 managed file\(s\) modified: .eqc\/bin\/eqc.mjs/);
 });
 
 test('engine selftest works inside the installed repo', () => {
@@ -269,4 +269,56 @@ test('init replaces an existing eqc-kit AGENTS.md block without duplicating it',
   assert.equal(t.split('eqc-kit:start').length, 2);
   assert.match(t, /^top[\s\S]*eqc check[\s\S]*bottom\n$/);
   assert.doesNotMatch(t, /\nold\n/);
+});
+
+test('uninstall keeps edited files/blocks with a warning; --force removes; empty .claude pruned', () => {
+  const SK = '.claude/skills/eqc-check/SKILL.md';
+  const r = repo({ 'AGENTS.md': '# Mine\n' });
+  cli(r, ['init', '--yes', '--config', writeCfg(r, { adapters: ['claude-code', 'agents-md'] })]);
+  fs.appendFileSync(path.join(r, SK), 'my edit\n');
+  fs.writeFileSync(path.join(r, 'AGENTS.md'), rd(r, 'AGENTS.md').replace('Don\'t regress', 'Never regress'));
+  const res = cli(r, ['uninstall', '--yes']);
+  assert.match(res.stderr, /kept edited .claude\/skills\/eqc-check\/SKILL.md/);
+  assert.match(res.stderr, /kept edited eqc-kit block/);
+  assert.ok(ex(r, SK) && !ex(r, '.claude/skills/eqc-fix'));
+  assert.match(rd(r, 'AGENTS.md'), /Never regress/);
+  assert.ok(ex(r, '.claude/skills'));
+});
+
+test('uninstall interactive: y removes edited file, .claude pruned when empty', () => {
+  const r = repo({ 'AGENTS.md': '# Mine\n' });
+  cli(r, ['init', '--yes', '--config', writeCfg(r, { adapters: ['claude-code', 'agents-md'] })]);
+  fs.appendFileSync(path.join(r, '.claude/skills/eqc-check/SKILL.md'), 'my edit\n');
+  cli(r, ['uninstall'], 'y\ny\n');
+  assert.ok(!ex(r, '.claude'));
+  assert.equal(rd(r, 'AGENTS.md'), '# Mine\n');
+});
+
+test('uninstall --force removes edited files; unrelated .claude content survives', () => {
+  const r = repo({ '.claude/settings.json': '{}' });
+  cli(r, ['init', '--yes']);
+  fs.appendFileSync(path.join(r, '.claude/agents/eqc-fixer.md'), 'edit');
+  cli(r, ['uninstall', '--yes', '--force']);
+  assert.ok(!ex(r, '.claude/agents') && !ex(r, '.claude/skills') && ex(r, '.claude/settings.json'));
+});
+
+test('update --force overwrites edited files; --yes keeps them', () => {
+  const r = repo();
+  cli(r, ['init', '--yes']);
+  const f = path.join(r, '.eqc/prompts/fix.md');
+  fs.appendFileSync(f, 'edit');
+  cli(r, ['update', '--yes']);
+  assert.match(fs.readFileSync(f, 'utf8'), /edit$/);
+  const res = cli(r, ['update', '--force']);
+  assert.equal(res.status, 0);
+  assert.doesNotMatch(fs.readFileSync(f, 'utf8'), /edit$/);
+});
+
+test('doctor: missing managed file is an error', () => {
+  const r = repo();
+  cli(r, ['init', '--yes']);
+  fs.rmSync(path.join(r, '.eqc/prompts/fix.md'));
+  const res = cli(r, ['doctor']);
+  assert.equal(res.status, 1);
+  assert.match(res.stdout, /✖ managed file missing: .eqc\/prompts\/fix.md/);
 });
