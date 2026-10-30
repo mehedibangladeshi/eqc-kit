@@ -17,7 +17,7 @@ Outputs: edited working tree (never committed unless the orchestrator's config s
 
 ## Mode 1 — `Fix: <ID>`
 1. Run `node .eqc/bin/eqc.mjs get <ID>`. Trust the evidence as a recent pointer.
-2. Plan silently: files to change, minimal change per file, and the check that proves it (lint, tests, or a grep showing the pattern is gone).
+2. Plan silently: files to change, minimal change per file, and the check that proves it (lint, tests, or a grep showing the pattern is gone). If the rule has a `verify` command, it must exit 0 after the fix; include it in the check.
 3. If the rule as evidenced needs a package change or architecture change and the dispatch does not carry the matching `approved:` line: STOP, `STATUS: BLOCKED`.
 4. Implement. If the real code differs from the evidence (file moved, gap narrower/wider), adapt and record it as a deviation.
 5. Self-verify: run the check. If the project has a check configured but it cannot run (e.g. dependencies not installed), do not install anything: use the strongest check that does run (syntax check, targeted grep, a single test file) and say exactly which check was skipped and why. On failure, fix and re-verify a reasonable number of times. If still failing, `STATUS: FAILED` with the real error.

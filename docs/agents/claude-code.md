@@ -16,11 +16,14 @@ Select the `claude-code` adapter at `npx eqc-kit init` (it is the default when `
     eqc-audit.md
     eqc-planner.md
     eqc-fixer.md
+CLAUDE.md          eqc-kit block (only if CLAUDE.md exists, or agents-md is off)
 ```
 
 - **Skills are the entry points.** `/eqc-check` and `/eqc-fix` are thin wrappers. Each says "follow `.eqc/prompts/check.md` (or `fix.md`) exactly" and adds Claude Code specifics: dispatch subagents, use AskUserQuestion for choices, put temp files in the session scratchpad.
 - **Agents are the sub-tasks.** Each subagent is another thin wrapper that follows one Prompt: `eqc-index` (`index.md`), `eqc-audit` (`audit.md`), `eqc-planner` (`plan.md`), `eqc-fixer` (`fixer.md`). Their tool lists are limited to what the job needs; only the fixer can edit existing files (the indexer and planner can only write their own output).
 - **Parallel per Tier.** `/eqc-check` dispatches one `eqc-audit` per Tier in a single message, so Tiers are audited at the same time. Fixes are the opposite: one Rule at a time, never two fixers at once.
+
+- **The guardrail block.** Claude Code reads `AGENTS.md` only when the repo has no `CLAUDE.md`. So when `CLAUDE.md` exists, eqc-kit also writes its marked block there, telling Claude to read `.eqc/RULES.md` before writing code, not to regress passing Rules, and to run `node .eqc/bin/eqc.mjs verify` before finishing. eqc-kit never creates a `CLAUDE.md` while the `agents-md` adapter is on, since a new `CLAUDE.md` would hide your `AGENTS.md` from Claude. If you add a `CLAUDE.md` later, run `npx eqc-kit update`.
 
 All the real logic lives in the Prompts in `.eqc/prompts/`, which are the same ones every other agent follows.
 
@@ -67,7 +70,7 @@ With a model set, the generated `eqc-fix` skill says to dispatch `[mechanical]` 
 
 ## Permission prompts
 
-The skills call the Engine as `node .eqc/bin/eqc.mjs <command>` many times per run, so Claude Code will ask permission each time until you allow it. It only reads and writes `.eqc/` state and the report; it never reads your code (see [engine-commands.md](../engine-commands.md)). To allow it for this project, add a rule to `.claude/settings.json` (or `.claude/settings.local.json` if you do not want to commit it):
+The skills call the Engine as `node .eqc/bin/eqc.mjs <command>` many times per run, so Claude Code will ask permission each time until you allow it. It reads and writes `.eqc/` state and the report, and `verify` runs the Verify commands in `rules.json`; it never judges your code itself (see [engine-commands.md](../engine-commands.md)). To allow it for this project, add a rule to `.claude/settings.json` (or `.claude/settings.local.json` if you do not want to commit it):
 
 ```json
 {

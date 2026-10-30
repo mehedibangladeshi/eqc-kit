@@ -5,7 +5,7 @@ Outputs: ONLY a `{"results":[...]}` JSON object as the final reply. Change no pr
 
 ## Steps
 1. Run `node .eqc/bin/eqc.mjs get <IDs>` (JSON `[{rule, compliance}]`). Audit exactly those rules. Prior evidence is a pointer: verify it, do not trust it blindly or re-derive from scratch. On a first audit `get` returns no prior compliance; that is expected.
-2. Per rule, investigate read-only: read files, grep, run read-only commands (lint/test scripts, `cat`, configs). Do not install dependencies or run commands with side effects. If a check cannot run for that reason, write "not run: <reason>" in the evidence and judge from config/code. Use `detection_hint` as a start, then verify directly.
+2. Per rule, investigate read-only: read files, grep, run read-only commands (lint/test scripts, `cat`, configs). Do not install dependencies or run commands with side effects. If a check cannot run for that reason, write "not run: <reason>" in the evidence and judge from config/code. Use `detection_hint` as a start, then verify directly. If the rule has a `verify` command, run it and cite its result; a non-zero exit means not `pass` (unless it is clearly broken, then say so in `notes`).
 3. Verdict:
    - `pass`: requirement met across the codebase, not one sampled file. Needs concrete evidence.
    - `fail`: clearly not met.

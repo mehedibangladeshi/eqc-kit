@@ -1,6 +1,6 @@
 # Engine commands
 
-The Engine is one file, `.eqc/bin/eqc.mjs`, that owns the state files and the tier maths. It needs Node 18+ and nothing else. It never reads your code; the agent does that and hands the Engine Verdicts.
+The Engine is one file, `.eqc/bin/eqc.mjs`, that owns the state files and the tier maths. It needs Node 18+ and nothing else. It never judges your code; the agent does that and hands the Engine Verdicts. The one exception is `verify`, which runs the Verify commands stored in the Index.
 
 You will rarely run these yourself. Your agent runs them while following the Prompts. They are useful for debugging: to see what the agent sees, or to check why the Compliance level is what it is.
 
@@ -37,15 +37,17 @@ $ echo $?
 |---|---|---|
 | `selftest` | Run the Engine's built-in assertions | nothing |
 | `reset` | Delete the Index, compliance and doc-meta (start over) | removes `rules.json`, `compliance.json`, `doc-meta.md` |
-| `report [--write]` | Print (or write) the Markdown report | report file with `--write` |
+| `report [--write]` | Print (or write) the Markdown report | report file and `.eqc/RULES.md` with `--write` |
 | `rank [keyword]` | List fix candidates, easiest first | nothing |
 | `ids <arg>` | Resolve which Rules to audit, grouped by Tier | nothing |
 | `get <ID,ID...>` | Show a Rule and its latest Verdict as JSON | nothing |
-| `merge <file>` | Merge Verdicts, recompute the level, refresh the report | `compliance.json`, report |
+| `merge <file>` | Merge Verdicts, recompute the level, refresh the report | `compliance.json`, report, `.eqc/RULES.md` |
 | `chunks <ID>` | Show progress of a Plan | nothing |
 | `check-ids <doc>` | Validate the Index against the Standard file | nothing |
 | `milestone add '<json>'` | Append a Milestone | `milestones.json` |
 | `config get <key>` | Read a value from `config.json` | nothing |
+| `verify [ID,...]` | Run the `verify` command of every passing Rule | nothing |
+| `gate [--min TIER] [--base file]` | Fail when the level is too low or a passing Rule regressed | nothing |
 
 Running with no or an unknown command prints the usage line and exits 1.
 
@@ -178,7 +180,7 @@ The only way Verdicts enter `compliance.json`. The file holds Verdicts from one 
 2. replaces existing Verdicts with the same ID and appends new ones,
 3. drops `file_count`, `effort_tier` and `blast_radius` from `pass` and `na` entries,
 4. recomputes the tier summary and the Compliance level, and stamps today's date,
-5. writes `compliance.json` and refreshes the report.
+5. writes `compliance.json`, refreshes the report and rewrites the Rule digest `.eqc/RULES.md`.
 
 Merging is safe to repeat.
 
@@ -263,6 +265,40 @@ milestone: status must be one of done|partial|blocked|failed
 
 Both errors exit 1.
 
+## `verify [ID,...]`
+
+Runs the `verify` command of every Rule whose Verdict is `pass` (optionally only the given IDs), from the repo root, and exits 1 if any fails. Rules without a `verify` command, and Rules that are not `pass`, are skipped, so a known failure never blocks you; only a regression does. The pre-commit and pre-push hooks run it (see [commands.md](commands.md#hooks)).
+
+```
+$ node .eqc/bin/eqc.mjs verify
+ok   BRONZE-2 — Linter enforced
+FAIL SILVER-3 — Structured logging, no stray debug prints
+  $ ! git grep -nE "console\.log" -- 'src/*.ts'
+  src/api/user.ts:12:    console.log(res);
+verify: 1 of 2 failed — fix the code, or re-audit if the Rule no longer passes
+$ echo $?
+1
+```
+
+With no passing Rule that has a command, it prints `verify: no passing rules with a verify command` and exits 0. The indexer writes `verify` commands (see the Index shape below); you can edit them in `rules.json`. See [ADR 0004](adr/0004-engine-runs-verify-commands.md).
+
+## `gate [--min TIER] [--base file]`
+
+Exits 1, printing one `gate: ...` line per problem, when:
+
+- `--min TIER`: the Compliance level is below that Tier ID (`HARD_FAIL` and `NONE` are below every Tier), or
+- `--base file`: a Rule that is `pass` in that earlier `compliance.json` is not `pass` now (it regressed or was dropped).
+
+```
+$ git show origin/main:.eqc/compliance.json > /tmp/base.json
+$ node .eqc/bin/eqc.mjs gate --min BRONZE --base /tmp/base.json
+gate: SILVER-1 regressed: pass -> partial
+$ echo $?
+1
+```
+
+With no problems it prints `gate ok · level: <level>`. With neither flag it always passes. It reads only the state files, so it is as fresh as the last Audit; pair it with `verify` to check the code itself.
+
 ## `config get <dotted.key>`
 
 Prints a value from `.eqc/config.json`. Nested keys use dots (`gates.ci_config`). Objects and arrays print as JSON; other values as plain text. A missing key or missing file exits 1.
@@ -303,10 +339,21 @@ Written by the agent when indexing. Tiers are ordered lowest first.
       "detection_hint": "Look for evidence in repo config and CI files that: …",
       "applies_to": ["all"],
       "conflict_note": null,
-      "source_line": 14
+      "source_line": 14,
+      "verify": "npm run lint"
     }
   ]
 }
+```
+
+`verify` is optional: a shell command, run from the repo root, that exits 0 when the Rule is met. The indexer adds it only to Rules a command can check mechanically.
+
+### `.eqc/RULES.md`
+
+The Rule digest, rewritten by every `merge` (and `report --write`): one line per Rule with its latest Verdict and `verify` command, grouped by Tier. The `AGENTS.md`/`CLAUDE.md` block tells agents to read it before writing code. Do not edit it.
+
+```
+- **BRONZE-2** [pass] Linter enforced — A linter is configured and runs in CI with zero errors. … (verify: `npm run lint`)
 ```
 
 ### `compliance.json`

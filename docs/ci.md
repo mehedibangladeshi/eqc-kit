@@ -11,6 +11,7 @@ Commit:
 | `.eqc/` (everything except `tmp/`) | The Engine, Prompts, config, Index, Verdicts, Milestones and Plans. Teammates then run the same Engine version and see the same results. |
 | `AGENTS.md` | The block tells non-Claude agents how to run `eqc check` and `eqc fix`. |
 | `.claude/skills/eqc-*` and `.claude/agents/eqc-*` | The Claude Code adapter files. |
+| `CLAUDE.md` (if eqc-kit wrote its block there) | Tells Claude Code to follow the Rules while writing code. |
 | The report, for example `docs/eqc/COMPLIANCE.md` | The readable result. |
 
 Do not commit `.eqc/tmp/`. `init` writes `.eqc/.gitignore` containing `tmp/`, so a plain `git add .eqc` is safe. Scratch files there are audit output waiting to be merged.
@@ -49,6 +50,26 @@ Things worth checking in review:
 
 ## Running in a pipeline
 
-The installer works without prompts: `npx eqc-kit init --yes --config answers.json`, see [configuration.md](configuration.md#non-interactive-setup). `npx eqc-kit doctor` exits 1 when the install is broken, so it can gate a job cheaply. The audit itself needs an agent, so it is not run in CI by eqc-kit.
+The installer works without prompts: `npx eqc-kit init --yes --config answers.json`, see [configuration.md](configuration.md#non-interactive-setup). `npx eqc-kit doctor` exits 1 when the install is broken, so it can gate a job cheaply. The audit itself needs an agent, so it is not run in CI by eqc-kit. Two Engine commands are cheap and deterministic, and do belong in CI. They are the build-time guard that `--no-verify` cannot skip:
 
-Planned, not available yet: a `report --check-tier` option to fail a PR when the Compliance level regresses. Until then, review the report diff as described above.
+- `verify` re-runs the Verify commands of passing Rules against the code in the PR.
+- `gate --base` fails when a Rule that passes on the target branch no longer passes in the PR's `compliance.json`; `gate --min TIER` fails below a Tier you require.
+
+GitHub Actions example:
+
+```yaml
+eqc:
+  runs-on: ubuntu-latest
+  steps:
+    - uses: actions/checkout@v4
+      with: { fetch-depth: 0 }
+    - uses: actions/setup-node@v4
+      with: { node-version: 20 }
+    # install your project's dependencies here if your verify commands need them (e.g. npm ci for npm run lint)
+    - run: node .eqc/bin/eqc.mjs verify
+    - run: |
+        git show origin/${{ github.base_ref }}:.eqc/compliance.json > /tmp/base.json 2>/dev/null || echo '{"results":[]}' > /tmp/base.json
+        node .eqc/bin/eqc.mjs gate --base /tmp/base.json --min BRONZE
+```
+
+Both exit 2 when the Standard is not indexed yet; treat that as a pass or index first. For local hooks see [commands.md](commands.md#hooks).
