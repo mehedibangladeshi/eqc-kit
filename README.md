@@ -8,9 +8,10 @@ eqc-kit helps you and your AI coding agent raise a project's compliance with a w
 - The agent **audits** the code and records a **Verdict** (`pass`, `partial`, `fail`, or `na` when the Rule does not apply) with evidence for each Rule.
 - A small vendored **Engine** (`.eqc/bin/eqc.mjs`) does the tier maths and writes the report. It never judges your code; it only runs the Verify commands your Index defines.
 - Your **Compliance level** is the highest Tier reached: every Rule in that Tier and every lower one has a Verdict and none is `fail`. Partials and `na` do not block; unaudited Rules do.
+- A **baseline** protects the Rules that have passed. The **guard** (`node .eqc/bin/eqc.mjs guard`) fails when a protected Rule regresses or the level drops, so it can run in CI.
 - The agent then **fixes** the easiest failing Rules first, using Gates to pause for approval on risky changes, and re-audits each one.
 
-- Between audits, **guardrails** keep the level from slipping: the `AGENTS.md`/`CLAUDE.md` block tells agents to follow the Rules in `.eqc/RULES.md` while writing code, and opt-in git hooks plus a CI step run `verify` (the Rules' Verify commands) and `gate` (no passing Rule may regress).
+- Between audits, **guardrails** keep the level from slipping: the `AGENTS.md`/`CLAUDE.md` block tells agents to follow the Rules in `.eqc/RULES.md` while writing code, and opt-in git hooks plus a CI step run `verify` (the Rules' Verify commands) and `guard` (no protected Rule in `.eqc/baseline.json` may regress).
 
 More in [docs/concepts.md](docs/concepts.md).
 
@@ -54,7 +55,7 @@ Full walkthrough with real output: [docs/getting-started.md](docs/getting-starte
   milestones.json    fix history (after the first fix)
   plans/             chunked fix Plans (medium and large fixes)
 AGENTS.md            a marked block, appended to your file if you have one
-CLAUDE.md            the same block, only if you already have a CLAUDE.md (Claude Code)
+CLAUDE.md            the guard block, only if you already have a CLAUDE.md (Claude Code)
 .claude/             Claude Code adapter only: skills/ and agents/
 docs/eqc/COMPLIANCE.md   the report (path is configurable)
 ```

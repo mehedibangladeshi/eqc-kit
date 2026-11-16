@@ -1,18 +1,12 @@
 #!/bin/sh
 # eqc-kit:managed v1 — regenerate with npx eqc-kit update
-# Blocks the push when a passing Rule's verify command fails, or a Rule that passes upstream
-# no longer passes here. Exit 2 = not indexed yet: allow.
+# Blocks the push when a passing Rule's verify command fails, or a protected Rule in
+# .eqc/baseline.json no longer passes. Exit 2 = not indexed yet: allow.
 node .eqc/bin/eqc.mjs verify
 s=$?
 [ "$s" -eq 2 ] && exit 0
 [ "$s" -ne 0 ] && exit "$s"
-base=$(mktemp)
-if git show '@{u}:.eqc/compliance.json' > "$base" 2>/dev/null; then
-  node .eqc/bin/eqc.mjs gate --base "$base"
-  s=$?
-else
-  s=0
-fi
-rm -f "$base"
+node .eqc/bin/eqc.mjs guard
+s=$?
 [ "$s" -eq 2 ] && exit 0
 exit "$s"

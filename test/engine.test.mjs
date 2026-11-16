@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import {
   buildTierSummary, computeCurrentTier, rankCandidates, selectIds, groupByTier,
-  parsePlanChunks, formatChunkStatus, checkIds, buildDigest, gateProblems,
+  parsePlanChunks, formatChunkStatus, checkIds, buildDigest, updateBaseline, findRegressions,
 } from '../engine/eqc.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -386,7 +386,7 @@ test('state dir defaults to parent of script dir', () => {
   assert.equal(r.stdout, 'docs/eqc-report.md\n');
 });
 
-// ---------- guardrails: digest, verify, gate ----------
+// ---------- guardrails: digest, verify ----------
 
 // Example fixture with verify commands on two Rules; returns sandbox after a merge.
 function guarded(results, verify = { 'SILVER-3': 'exit 1', 'BRONZE-2': 'true' }) {
@@ -427,22 +427,93 @@ test('verify runs commands from the repo root', () => {
   assert.equal(sb.run('verify').status, 0);
 });
 
-test('gate: --min and --base regression', () => {
-  const doc = loadRules('example');
-  const now = { current_tier: 'BRONZE', results: [{ id: 'BRONZE-1', status: 'pass' }, { id: 'SILVER-1', status: 'partial' }] };
-  assert.deepEqual(gateProblems(doc, now, { min: 'BRONZE' }), []);
-  assert.deepEqual(gateProblems(doc, now, { min: 'SILVER' }), ['level BRONZE is below SILVER']);
-  assert.deepEqual(gateProblems(doc, { ...now, current_tier: 'HARD_FAIL' }, { min: 'BRONZE' }), ['level HARD_FAIL is below BRONZE']);
-  assert.match(gateProblems(doc, now, { min: 'PLATINUM' })[0], /unknown tier/);
-  assert.deepEqual(gateProblems(doc, now, { base: { results: [{ id: 'SILVER-1', status: 'pass' }, { id: 'GOLD-1', status: 'pass' }] } }),
-    ['SILVER-1 regressed: pass -> partial', 'GOLD-1 regressed: pass -> unaudited']);
-
+test('guard --min: fails below the tier, rejects unknown or missing tier', () => {
   const sb = guarded([{ id: 'BRONZE-2', status: 'pass' }]);
-  assert.equal(sb.run('gate').status, 0);
-  const base = sb.writeTmp('base.json', { results: [{ id: 'BRONZE-2', status: 'pass' }, { id: 'GOLD-1', status: 'pass' }] });
-  const r = sb.run('gate', '--base', base);
+  let r = sb.run('guard', '--min', 'BRONZE');
   assert.equal(r.status, 1);
-  assert.match(r.stdout, /gate: GOLD-1 regressed: pass -> unaudited/);
-  assert.equal(sb.run('gate', '--min').status, 1);
-  assert.equal(sandbox().run('gate').status, 2);
+  assert.match(r.stdout, /guard: level NONE is below --min BRONZE/);
+  assert.match(sb.run('guard', '--min', 'PLATINUM').stdout, /unknown tier "PLATINUM"/);
+  assert.equal(sb.run('guard', '--min').status, 1);
+  const bronze = loadRules('example').rules.filter(x => x.tier === 'BRONZE').map(x => ({ id: x.id, status: 'pass' }));
+  sb.run('merge', sb.writeTmp('b.json', bronze));
+  assert.equal(sb.run('guard', '--min', 'BRONZE').status, 0);
+  assert.equal(sb.run('guard', '--min', 'SILVER').status, 1);
+});
+
+// ---------- baseline / guard ----------
+
+test('updateBaseline: union of passes in rule order, level never drops', () => {
+  const rd = loadRules('example');
+  const b1 = updateBaseline(null, rd, { results: [{ id: 'SILVER-1', status: 'pass' }, { id: 'BRONZE-2', status: 'pass' }, { id: 'BRONZE-1', status: 'fail' }], current_tier: 'HARD_FAIL' }, 'T1');
+  assert.deepEqual(b1, { schema: 1, standard_version: '1.0', level: 'HARD_FAIL', updated_at: 'T1', protected: ['BRONZE-2', 'SILVER-1'] });
+  const b2 = updateBaseline({ ...b1, level: 'SILVER' }, rd, { results: [{ id: 'BRONZE-1', status: 'pass' }, { id: 'BRONZE-2', status: 'fail' }], current_tier: 'NONE' }, 'T2');
+  assert.equal(b2.level, 'SILVER');
+  assert.deepEqual(b2.protected, ['BRONZE-1', 'BRONZE-2', 'SILVER-1']);
+  assert.equal(updateBaseline(b2, rd, { results: [], current_tier: 'GOLD' }, 'T3').level, 'GOLD');
+  assert.equal(updateBaseline({ level: 'HARD_FAIL', protected: [] }, rd, { results: [], current_tier: 'NONE' }, 'T4').level, 'NONE');
+});
+
+test('findRegressions: fail, partial, not audited, na ok, unknown id ignored, level drop', () => {
+  const rd = loadRules('example');
+  const baseline = { level: 'BRONZE', protected: ['BRONZE-1', 'BRONZE-2', 'BRONZE-3', 'BRONZE-4', 'BRONZE-5', 'GONE-1'] };
+  const compliance = { results: [
+    { id: 'BRONZE-1', status: 'fail' }, { id: 'BRONZE-2', status: 'partial' },
+    { id: 'BRONZE-4', status: 'na' }, { id: 'BRONZE-5', status: 'pass' },
+  ], current_tier: 'HARD_FAIL' };
+  assert.deepEqual(findRegressions(rd, compliance, baseline), {
+    rules: [
+      { id: 'BRONZE-1', title: 'CI runs on every pull request', status: 'fail' },
+      { id: 'BRONZE-2', title: 'Linter enforced', status: 'partial' },
+      { id: 'BRONZE-3', title: 'Code formatter configured', status: 'not audited' },
+    ],
+    levelDrop: { current: 'HARD_FAIL', baseline: 'BRONZE' },
+  });
+  assert.deepEqual(findRegressions(rd, { results: [{ id: 'BRONZE-5', status: 'na' }], current_tier: 'GOLD' }, { level: 'BRONZE', protected: ['BRONZE-5'] }), { rules: [], levelDrop: null });
+});
+
+test('guard CLI: no index 2, no baseline 0, ok 0, regression 1; merge writes baseline; reset deletes it', () => {
+  assert.equal(sandbox(null).run('guard').status, 2);
+  const sb = sandbox('example');
+  let r = sb.run('guard');
+  assert.equal(r.status, 0);
+  assert.equal(r.stdout.trim(), 'guard: no baseline yet');
+  const bronze = loadRules('example').rules.filter(x => x.tier === 'BRONZE').map(x => ({ id: x.id, status: 'pass' }));
+  r = sb.run('merge', sb.writeTmp('b.json', bronze));
+  assert.match(r.stdout, /\nbaseline: BRONZE · 6 protected\n/);
+  const b = sb.readJson('baseline.json');
+  assert.equal(b.schema, 1);
+  assert.equal(b.level, 'BRONZE');
+  assert.equal(b.standard_version, '1.0');
+  assert.equal(b.protected.length, 6);
+  r = sb.run('guard');
+  assert.equal(r.status, 0);
+  assert.equal(r.stdout.trim(), 'guard: ok · baseline BRONZE · 6 protected rules');
+  r = sb.run('merge', sb.writeTmp('f.json', [{ id: 'BRONZE-1', status: 'fail' }]));
+  assert.match(r.stdout, /baseline: BRONZE · 6 protected\nguard: 2 regressions — run eqc guard/);
+  r = sb.run('guard');
+  assert.equal(r.status, 1);
+  assert.equal(r.stdout.trim(), 'guard: REGRESSION\n- BRONZE-1 — CI runs on every pull request — now fail\n- level HARD_FAIL below baseline BRONZE');
+  assert.equal(sb.readJson('baseline.json').level, 'BRONZE');
+  const md = sb.run('report').stdout;
+  assert.match(md, /Baseline: BRONZE · 6 protected · guard: 2 regressions/);
+  assert.match(md, /## Regressions\n\n- BRONZE-1 — CI runs on every pull request — now fail/);
+  sb.run('reset');
+  assert.equal(fs.existsSync(path.join(sb.dir, 'baseline.json')), false);
+});
+
+test('report: To reach lists blocking rules as ID — title; Not audited section', () => {
+  const sb = sandbox('example');
+  sb.run('merge', sb.writeTmp('m.json', [{ id: 'BRONZE-1', status: 'fail' }, { id: 'BRONZE-2', status: 'partial' }, { id: 'BRONZE-3', status: 'pass' }]));
+  let md = sb.run('report').stdout;
+  assert.match(md, /Baseline: HARD_FAIL · 1 protected · guard: ok/);
+  assert.match(md, /## To reach Bronze\n\n- \*\*BRONZE-1\*\* — CI runs on every pull request — fail\n- \*\*BRONZE-4\*\* — README has setup instructions — not audited\n/);
+  assert.doesNotMatch(md, /To reach[^\n]*\n[^#]*BRONZE-2/);
+  assert.match(md, /## Not audited\n\n- \*\*BRONZE-4\*\* — README has setup instructions\n/);
+  assert.doesNotMatch(md, /## Regressions/);
+  // top tier reached, everything audited -> both sections omitted
+  const all = loadRules('example').rules.map(x => ({ id: x.id, status: 'pass' }));
+  sb.run('merge', sb.writeTmp('a.json', all));
+  md = sb.run('report').stdout;
+  assert.doesNotMatch(md, /## To reach/);
+  assert.doesNotMatch(md, /## Not audited/);
 });

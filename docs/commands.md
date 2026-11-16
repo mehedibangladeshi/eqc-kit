@@ -54,6 +54,8 @@ What it does:
 3. Copies the Standard to `.eqc/standard/`, writes `.eqc/config.json`, `.eqc/.gitignore` (`tmp/`) and the vendored Engine and Prompts.
 4. Writes the adapter files you chose, then `.eqc/manifest.json` with a hash of every Managed file.
 
+With the `claude-code` adapter and an existing `CLAUDE.md` (or with `agents-md` off), `init` also writes a managed block into `CLAUDE.md` between `<!-- eqc-kit:start -->` and `<!-- eqc-kit:end -->`, titled "EQC compliance guard". It sets the rules for development work: read `.eqc/RULES.md`, run `node .eqc/bin/eqc.mjs verify`, re-audit affected protected Rules, run `node .eqc/bin/eqc.mjs guard`, and never finish with a regression. The `AGENTS.md` block carries the same guard rules, so other agents follow them too. See [concepts.md](concepts.md#baseline-and-guard).
+
 Defaults under `--yes`: Standard `example`, detected tags, CI paths and package managers, every Gate `true` except `auto_commit`, report at `docs/eqc/COMPLIANCE.md`, no cheaper model. The default adapters are `claude-code` if `.claude/` or `CLAUDE.md` exists plus `agents-md` if `AGENTS.md` exists; if none of those exist, both.
 
 An existing `AGENTS.md` is kept: the eqc-kit block is appended between `<!-- eqc-kit:start -->` and `<!-- eqc-kit:end -->`. An existing file at a path eqc-kit wants to write, that it did not write, is kept and reported unless you confirm the overwrite (or pass `--force`):
@@ -161,9 +163,9 @@ Turns on the git hooks that block a commit or push when code breaks a passing Ru
 | Hook | Runs | Blocks when |
 |---|---|---|
 | `pre-commit` | `eqc.mjs verify` | A passing Rule's `verify` command fails |
-| `pre-push` | `eqc.mjs verify`, then `eqc.mjs gate --base <upstream compliance.json>` | The same, or a Rule that passes on the upstream branch does not pass here |
+| `pre-push` | `eqc.mjs verify`, then `eqc.mjs guard` | The same, or a protected Rule in `.eqc/baseline.json` regressed in the recorded Verdicts |
 
-Both allow everything until the Standard is indexed. `git commit --no-verify` skips them, so also run them in CI (see [ci.md](ci.md#running-in-a-pipeline)).
+Both allow everything until the Standard is indexed. `git commit --no-verify` skips them, so also run them in CI (see [ci.md](ci.md#verify-and-guard-in-ci)).
 
 ```
 $ npx eqc-kit hooks

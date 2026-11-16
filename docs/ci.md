@@ -46,14 +46,18 @@ Things worth checking in review:
 - A fix marked `pass` has evidence you agree with. Evidence is in `.eqc/compliance.json`; run `node .eqc/bin/eqc.mjs get <ID>` to see it.
 - CI config, dependency and lockfile changes. These are the ones your Gates exist for.
 - For a large fix, the Plan in `.eqc/plans/<ID>.md` shows the intended approach and which Chunks are done.
-- No regression: rules that passed before still pass. Ask the agent for `eqc check recheck`, or `full` before a release.
+- No regression: `node .eqc/bin/eqc.mjs guard` prints `ok`. Ask the agent for `eqc check recheck`, or `full` before a release.
 
 ## Running in a pipeline
 
 The installer works without prompts: `npx eqc-kit init --yes --config answers.json`, see [configuration.md](configuration.md#non-interactive-setup). `npx eqc-kit doctor` exits 1 when the install is broken, so it can gate a job cheaply. The audit itself needs an agent, so it is not run in CI by eqc-kit. Two Engine commands are cheap and deterministic, and do belong in CI. They are the build-time guard that `--no-verify` cannot skip:
 
-- `verify` re-runs the Verify commands of passing Rules against the code in the PR.
-- `gate --base` fails when a Rule that passes on the target branch no longer passes in the PR's `compliance.json`; `gate --min TIER` fails below a Tier you require.
+## Verify and guard in CI
+
+Two Engine commands run without an agent, so they are cheap on every PR:
+
+- `verify` re-runs the Verify commands of passing Rules against the code in the PR. It catches code that breaks a mechanically checkable Rule even when nobody re-audited.
+- `guard` compares the committed `.eqc/compliance.json` with `.eqc/baseline.json`. It exits 1 when a protected Rule is now `fail`, `partial` or unaudited, or when the level dropped below the baseline. `guard --min TIER` also fails below a Tier you require.
 
 GitHub Actions example:
 
@@ -62,14 +66,13 @@ eqc:
   runs-on: ubuntu-latest
   steps:
     - uses: actions/checkout@v4
-      with: { fetch-depth: 0 }
     - uses: actions/setup-node@v4
       with: { node-version: 20 }
     # install your project's dependencies here if your verify commands need them (e.g. npm ci for npm run lint)
     - run: node .eqc/bin/eqc.mjs verify
-    - run: |
-        git show origin/${{ github.base_ref }}:.eqc/compliance.json > /tmp/base.json 2>/dev/null || echo '{"results":[]}' > /tmp/base.json
-        node .eqc/bin/eqc.mjs gate --base /tmp/base.json --min BRONZE
+    - run: node .eqc/bin/eqc.mjs guard --min BRONZE
 ```
 
-Both exit 2 when the Standard is not indexed yet; treat that as a pass or index first. For local hooks see [commands.md](commands.md#hooks).
+Both exit 2 when the Standard is not indexed yet; treat that as a pass or index first. Before the first merge there is no `baseline.json`, and `guard` passes with `guard: no baseline yet`.
+
+`guard` reads recorded Verdicts only; it does not audit. So a PR that touches Rules must include a re-audit of them: run `eqc check <IDs>` (or `eqc check recheck`) in your agent, merge, and commit the updated `.eqc/compliance.json`, `.eqc/baseline.json` and report. Otherwise CI checks stale results. Details are in [engine-commands.md](engine-commands.md#guard). For local hooks see [commands.md](commands.md#hooks).

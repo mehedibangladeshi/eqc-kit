@@ -13,6 +13,7 @@ const VERSION = JSON.parse(fs.readFileSync(path.join(PKG, 'package.json'), 'utf8
 const USAGE = `eqc-kit ${VERSION}
 usage: eqc-kit <init|update|uninstall|doctor|hooks> [--yes] [--config file.json] [--force] [--purge] [--off] [--cwd dir]`;
 const HOOKS = '.eqc/hooks';
+const hostOf = e => (e.rel ?? e).split('#')[0]; // block key 'FILE#name' -> host file; plain rel unchanged
 const START = '<!-- eqc-kit:start -->', END = '<!-- eqc-kit:end -->';
 const AGENTS = {
   'eqc-index': { prompt: 'index', tools: 'Read, Write, Bash', description: 'Indexes the standard doc into rules.json.' },
@@ -141,7 +142,7 @@ function generate(cfg, root) {
   for (const h of ['pre-commit', 'pre-push'])
     out.push({ rel: `${HOOKS}/${h}`, mode: 0o755, content: fs.readFileSync(path.join(PKG, 'adapters/git-hooks', h), 'utf8') });
   const vars = { report_path: cfg.report_path };
-  const block = tpl('adapters/agents-md/block.md', vars).trimEnd();
+  const guard = cmd => ({ guard_rules: tpl('adapters/guard.md', { ...vars, check_cmd: cmd }).trimEnd() });
   if (cfg.adapters.includes('claude-code')) {
     const note = cfg.cheap_model
       ? `- Dispatch \`[mechanical]\` chunks with \`model: ${cfg.cheap_model}\` (config \`cheap_model\`, read via \`node .eqc/bin/eqc.mjs config get cheap_model\`); use the session model for \`[judgment]\` chunks and retries.`
@@ -151,26 +152,26 @@ function generate(cfg, root) {
     for (const [name, a] of Object.entries(AGENTS))
       out.push({ rel: `.claude/agents/${name}.md`, content: tpl('adapters/claude-code/agent.md', { name, ...a }) });
     // Claude Code reads AGENTS.md only when there is no CLAUDE.md. Creating one would hide the user's AGENTS.md,
-    // so the block goes into CLAUDE.md only when it already exists or no AGENTS.md block is written.
-    if (fs.existsSync(path.join(root, 'CLAUDE.md')) || !cfg.adapters.includes('agents-md')) out.push({ rel: 'CLAUDE.md#eqc-kit', block: true, content: block });
+    // so the guard goes into CLAUDE.md only when it already exists or no AGENTS.md block is written.
+    if (fs.existsSync(path.join(root, 'CLAUDE.md')) || !cfg.adapters.includes('agents-md'))
+      out.push({ rel: 'CLAUDE.md#eqc-kit', block: true, content: tpl('adapters/claude-code/claude-md.md', guard('/eqc-check')).trimEnd() });
   }
-  if (cfg.adapters.includes('agents-md')) out.push({ rel: 'AGENTS.md#eqc-kit', block: true, content: block });
+  if (cfg.adapters.includes('agents-md')) out.push({ rel: 'AGENTS.md#eqc-kit', block: true, content: tpl('adapters/agents-md/block.md', { ...vars, ...guard('`eqc check`') }).trimEnd() });
   return out;
 }
 
 // Managed blocks are keyed '<file>#eqc-kit'; everything else is a whole file.
-const target = e => e.block ? e.rel.split('#')[0] : e.rel;
 const blockRange = t => { const s = t.indexOf(START), e = t.indexOf(END); return s === -1 || e < s ? null : [s, e + END.length]; };
 
 function current(root, e) {
-  const t = read(path.join(root, target(e)));
+  const t = read(path.join(root, hostOf(e)));
   if (!e.block || t === null) return t;
   const r = blockRange(t);
   return r ? t.slice(...r) : null;
 }
 
 function put(root, e, content) {
-  const p = path.join(root, target(e));
+  const p = path.join(root, hostOf(e));
   let out = content;
   if (e.block) {
     const t = read(p);
@@ -310,12 +311,12 @@ async function uninstall(root, opts) {
   try {
     if (!opts.yes && !(await io.yn(opts.purge ? 'Remove ALL of .eqc/ (state included) and managed files?' : 'Remove managed files (state in .eqc/ is kept)?', false))) return console.log('aborted.');
     for (const [rel, h] of Object.entries(mf.files)) {
-      const isBlock = rel.includes('#'), p = path.join(root, target({ rel, block: isBlock }));
+      const isBlock = rel.includes('#'), p = path.join(root, hostOf(rel));
       const t = read(p), r = isBlock && t !== null ? blockRange(t) : null;
       const cur = isBlock ? (r ? t.slice(...r) : null) : t;
       if (cur === null) continue;
       if (sha(cur) !== h && !opts.force) {
-        const label = isBlock ? `edited eqc-kit block in ${target({ rel, block: true })}` : `edited ${rel}`;
+        const label = isBlock ? `edited eqc-kit block in ${hostOf(rel)}` : `edited ${rel}`;
         if (opts.yes || !(await io.yn(`remove ${label}?`, false))) { console.warn(`warning: kept ${label} (use --force to remove)`); continue; }
       }
       if (isBlock) {

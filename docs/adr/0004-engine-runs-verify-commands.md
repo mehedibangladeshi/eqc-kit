@@ -8,4 +8,4 @@ To stop new code from breaking Rules between Audits, a Rule in `rules.json` may 
 
 - Run the agent (an LLM Audit) in pre-commit: rejected as slow, costly and nondeterministic, and it needs agent credentials on every machine and in CI.
 - Generate native linter configs (ESLint, ruff) from Rules: rejected because a per-language mapping breaks tool-agnosticism. A `verify` command can call the project's own linter instead.
-- Gate only on `compliance.json` (`gate`): kept, but on its own it is only as fresh as the last Audit and never looks at new code.
+- Guard only on recorded Verdicts (`guard` against `baseline.json`): kept, but on its own it is only as fresh as the last Audit and never looks at new code.

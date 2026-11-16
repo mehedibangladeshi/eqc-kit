@@ -276,12 +276,12 @@ test('uninstall keeps edited files/blocks with a warning; --force removes; empty
   const r = repo({ 'AGENTS.md': '# Mine\n' });
   cli(r, ['init', '--yes', '--config', writeCfg(r, { adapters: ['claude-code', 'agents-md'] })]);
   fs.appendFileSync(path.join(r, SK), 'my edit\n');
-  fs.writeFileSync(path.join(r, 'AGENTS.md'), rd(r, 'AGENTS.md').replace('Don\'t regress', 'Never regress'));
+  fs.writeFileSync(path.join(r, 'AGENTS.md'), rd(r, 'AGENTS.md').replace('Read the prompt file', 'Skim the prompt file'));
   const res = cli(r, ['uninstall', '--yes']);
   assert.match(res.stderr, /kept edited .claude\/skills\/eqc-check\/SKILL.md/);
   assert.match(res.stderr, /kept edited eqc-kit block/);
   assert.ok(ex(r, SK) && !ex(r, '.claude/skills/eqc-fix'));
-  assert.match(rd(r, 'AGENTS.md'), /Never regress/);
+  assert.match(rd(r, 'AGENTS.md'), /Skim the prompt file/);
   assert.ok(ex(r, '.claude/skills'));
 });
 
@@ -331,7 +331,7 @@ const gitCfg = (r, k) => spawnSync('git', ['config', '--get', k], { cwd: r, enco
 test('guardrail block: in AGENTS.md always; in CLAUDE.md only when it exists or agents-md is off', () => {
   let r = repo();
   cli(r, ['init', '--yes']);
-  assert.match(rd(r, 'AGENTS.md'), /When writing or changing code[\s\S]*\.eqc\/RULES\.md[\s\S]*eqc\.mjs verify/);
+  assert.match(rd(r, 'AGENTS.md'), /\.eqc\/RULES\.md[\s\S]*eqc\.mjs verify[\s\S]*eqc\.mjs guard/);
   assert.ok(!ex(r, 'CLAUDE.md'), 'must not create CLAUDE.md: it would hide AGENTS.md from Claude Code');
 
   r = repo({ 'CLAUDE.md': '# Mine\n' });
@@ -402,4 +402,32 @@ test('pre-commit hook: allows before indexing, blocks when a passing Rule fails 
   const res = hook();
   assert.equal(res.status, 1);
   assert.match(res.stdout, /FAIL A-1 — No debug prints/);
+  const push = () => spawnSync('sh', ['.eqc/hooks/pre-push'], { cwd: r, encoding: 'utf8' });
+  fs.writeFileSync(path.join(r, 'src/a.js'), 'export const a = 1;\n');
+  assert.equal(push().status, 0);
+  fs.writeFileSync(path.join(r, 'm.json'), JSON.stringify([{ id: 'A-1', status: 'fail' }]));
+  spawnSync('node', ['.eqc/bin/eqc.mjs', 'merge', 'm.json'], { cwd: r });
+  assert.equal(hook().status, 0, 'a known fail never blocks a commit');
+  const p = push();
+  assert.equal(p.status, 1, 'but a protected Rule that regressed blocks the push');
+  assert.match(p.stdout, /guard: REGRESSION[\s\S]*A-1/);
+});
+
+test('claude-code: CLAUDE.md guard block written, user text kept, uninstall strips only block, doctor ok', () => {
+  const r = repo({ 'CLAUDE.md': '# Mine\n\nkeep\n' });
+  assert.equal(cli(r, ['init', '--yes', '--config', writeCfg(r, { adapters: ['claude-code'] })]).status, 0);
+  const t = rd(r, 'CLAUDE.md');
+  assert.match(t, /^# Mine\n\nkeep\n\n<!-- eqc-kit:start -->\n## EQC compliance guard[\s\S]*\/eqc-check <IDs>[\s\S]*eqc\.mjs guard[\s\S]*baseline\.json[\s\S]*<!-- eqc-kit:end -->\n$/);
+  assert.ok(!t.includes('{{'));
+  assert.ok(JSON.parse(rd(r, '.eqc/manifest.json')).files['CLAUDE.md#eqc-kit']);
+  assert.equal(cli(r, ['doctor']).status, 0);
+  cli(r, ['uninstall', '--yes']);
+  assert.equal(rd(r, 'CLAUDE.md'), '# Mine\n\nkeep\n');
+});
+
+test('agents-md block carries the same guard text with the eqc check command', () => {
+  const r = repo({ 'AGENTS.md': '# Mine\n' });
+  cli(r, ['init', '--yes', '--config', writeCfg(r, { adapters: ['agents-md'] })]);
+  assert.match(rd(r, 'AGENTS.md'), /`eqc check` <IDs>[\s\S]*eqc\.mjs guard/);
+  assert.ok(!ex(r, 'CLAUDE.md'));
 });
