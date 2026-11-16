@@ -64,6 +64,54 @@ export function computeCurrentTier(summary, tiers) {
   return achieved;
 }
 
+// HARD_FAIL < NONE < every tier (by order).
+export function levelRank(level, tiers) {
+  if (level === 'HARD_FAIL') return -2;
+  const i = tierIds(tiers).indexOf(level);
+  return i === -1 ? -1 : i;
+}
+
+// ---------- baseline (pure) ----------
+
+// Ratchet: protected = previous ∪ current passes (rules.json order; unknown ids last); level never drops.
+export function updateBaseline(prev, rulesDoc, compliance, nowIso) {
+  const { rules, tiers } = rulesDoc;
+  const ids = new Set([...(prev?.protected || []), ...(compliance.results || []).filter(r => r.status === 'pass').map(r => r.id)]);
+  const pos = new Map(rules.map((r, i) => [r.id, i]));
+  const at = id => (pos.has(id) ? pos.get(id) : Infinity);
+  const protectedIds = [...ids].sort((a, b) => at(a) - at(b) || (a < b ? -1 : a > b ? 1 : 0));
+  const cur = compliance.current_tier || 'NONE';
+  const level = prev && levelRank(prev.level, tiers) > levelRank(cur, tiers) ? prev.level : cur;
+  return { schema: 1, standard_version: rulesDoc.standard?.version, level, updated_at: nowIso, protected: protectedIds };
+}
+
+// Regression = protected rule now fail/partial/unaudited (na is fine; ids gone from rules.json ignored),
+// or current level below the baseline level.
+export function findRegressions(rulesDoc, compliance, baseline) {
+  const { rules, tiers } = rulesDoc;
+  const ruleById = new Map(rules.map(r => [r.id, r]));
+  const resById = new Map((compliance.results || []).map(r => [r.id, r]));
+  const out = [];
+  for (const id of baseline?.protected || []) {
+    if (!ruleById.has(id)) continue;
+    const status = resById.get(id)?.status;
+    if (status === 'pass' || status === 'na') continue;
+    out.push({ id, title: ruleById.get(id).title, status: status || 'not audited' });
+  }
+  const current = compliance.current_tier || 'NONE';
+  const levelDrop = baseline && levelRank(current, tiers) < levelRank(baseline.level, tiers)
+    ? { current, baseline: baseline.level } : null;
+  return { rules: out, levelDrop };
+}
+
+export function regressionLines(reg) {
+  const lines = reg.rules.map(r => `- ${r.id} — ${r.title} — now ${r.status}`);
+  if (reg.levelDrop) lines.push(`- level ${reg.levelDrop.current} below baseline ${reg.levelDrop.baseline}`);
+  return lines;
+}
+
+const regressionCount = reg => reg.rules.length + (reg.levelDrop ? 1 : 0);
+
 // ---------- results (pure) ----------
 
 export function stripEffortFieldsOnPass(results) {
@@ -250,7 +298,7 @@ export function checkIds(docText, rules, tiers) {
 
 // ---------- report (pure) ----------
 
-export function buildReport(rulesDoc, compliance) {
+export function buildReport(rulesDoc, compliance, baseline) {
   const { tiers, rules } = rulesDoc;
   const std = rulesDoc.standard || {};
   const tierName = new Map(tiers.map(t => [t.id, t.name]));
@@ -272,6 +320,25 @@ export function buildReport(rulesDoc, compliance) {
     out.push(`| ${tierName.get(id)} | ${s.pass} | ${s.partial} | ${s.fail} | ${s.na ?? 0} | ${s.total} |`);
   }
   const ruleById = new Map(rules.map(r => [r.id, r]));
+  const resById = new Map((compliance.results || []).map(r => [r.id, r]));
+  if (baseline) {
+    const reg = findRegressions(rulesDoc, compliance, baseline);
+    const k = regressionCount(reg);
+    out.push('', `Baseline: ${baseline.level} · ${(baseline.protected || []).length} protected · guard: ${k ? `${k} regressions` : 'ok'}`);
+    if (k) out.push('', '## Regressions', '', ...regressionLines(reg));
+  }
+  const ids = tierIds(tiers);
+  const next = ids[Math.max(levelRank(cur, tiers), -1) + 1];
+  if (next) {
+    const upTo = new Set(ids.slice(0, ids.indexOf(next) + 1));
+    const blocking = rules.filter(r => upTo.has(r.tier)).flatMap(r => {
+      const st = resById.get(r.id)?.status;
+      return st === 'fail' ? [`- **${r.id}** — ${r.title} — fail`] : st ? [] : [`- **${r.id}** — ${r.title} — not audited`];
+    });
+    out.push('', `## To reach ${tierName.get(next) || next}`, '', ...blocking);
+  }
+  const notAudited = rules.filter(r => !resById.has(r.id)).map(r => `- **${r.id}** — ${r.title}`);
+  if (notAudited.length) out.push('', '## Not audited', '', ...notAudited);
   const bullets = status => (compliance.results || [])
     .filter(r => r.status === status)
     .map(r => `- **${r.id}** — ${ruleById.get(r.id)?.title ?? '(unknown rule)'} — ${truncate(r.evidence || r.notes || '', 160)}`);
@@ -313,11 +380,11 @@ function reportPath() {
   return path.resolve(path.dirname(stateDir()), cfg.report_path);
 }
 
-function writeReport(rulesDoc, compliance) {
+function writeReport(rulesDoc, compliance, baseline) {
   const p = reportPath();
   if (!p) return null;
   fs.mkdirSync(path.dirname(p), { recursive: true });
-  fs.writeFileSync(p, buildReport(rulesDoc, compliance));
+  fs.writeFileSync(p, buildReport(rulesDoc, compliance, baseline));
   return p;
 }
 
@@ -325,13 +392,23 @@ function writeReport(rulesDoc, compliance) {
 
 function cmdReport(args) {
   const { rulesDoc, compliance } = requireData();
+  const baseline = readJson(file('baseline.json'));
   if (args.includes('--write')) {
-    const p = writeReport(rulesDoc, compliance);
+    const p = writeReport(rulesDoc, compliance, baseline);
     if (!p) fail('report --write: no report_path in config.json');
     console.log(`report: ${p}`);
     return;
   }
-  process.stdout.write(buildReport(rulesDoc, compliance));
+  process.stdout.write(buildReport(rulesDoc, compliance, baseline));
+}
+
+function cmdGuard() {
+  const { rulesDoc, compliance } = requireData();
+  const baseline = readJson(file('baseline.json'));
+  if (!baseline) return console.log('guard: no baseline yet');
+  const reg = findRegressions(rulesDoc, compliance, baseline);
+  if (!regressionCount(reg)) return console.log(`guard: ok · baseline ${baseline.level} · ${(baseline.protected || []).length} protected rules`);
+  fail(['guard: REGRESSION', ...regressionLines(reg)].join('\n'));
 }
 
 function cmdRank(keyword) {
@@ -362,8 +439,8 @@ function cmdRank(keyword) {
 }
 
 function cmdReset() {
-  for (const f of ['rules.json', 'compliance.json', 'doc-meta.md']) fs.rmSync(file(f), { force: true });
-  console.log('reset: removed rules.json, compliance.json, doc-meta.md (kept milestones, plans, config, standard)');
+  for (const f of ['rules.json', 'compliance.json', 'doc-meta.md', 'baseline.json']) fs.rmSync(file(f), { force: true });
+  console.log('reset: removed rules.json, compliance.json, doc-meta.md, baseline.json (kept milestones, plans, config, standard)');
 }
 
 function cmdIds(arg) {
@@ -404,7 +481,12 @@ function cmdMerge(filePath) {
   writeJson(file('compliance.json'), updated);
   const un = totalUnaudited(tier_summary);
   console.log(`merged ${entries.length} results · level: ${current_tier}${un > 0 ? ` · ${un} rules not audited` : ''}`);
-  const p = writeReport(rulesDoc, updated);
+  const baseline = updateBaseline(readJson(file('baseline.json')), rulesDoc, updated, new Date().toISOString());
+  writeJson(file('baseline.json'), baseline);
+  console.log(`baseline: ${baseline.level} · ${baseline.protected.length} protected`);
+  const k = regressionCount(findRegressions(rulesDoc, updated, baseline));
+  if (k) console.log(`guard: ${k} regressions — run eqc guard`);
+  const p = writeReport(rulesDoc, updated, baseline);
   if (p) console.log(`report: ${p}`);
 }
 
@@ -480,12 +562,18 @@ export function selftest() {
   assert.strictEqual(ok.okCount, 2);
   const bad = checkIds(doc, [{ id: 'LOW-1', tier: 'LOW', title: 'Alpha rule', source_line: 4 }], tiers);
   assert.match(bad.mismatches[0].reason, /not inside the LOW section/);
+
+  const rd = { rules, tiers: t3 };
+  const b = updateBaseline({ level: 'B', protected: ['B-1'] }, rd, { results: [{ id: 'A-1', status: 'pass' }], current_tier: 'HARD_FAIL' }, 'now');
+  assert.deepStrictEqual([b.level, b.protected], ['B', ['A-1', 'B-1']]);
+  const reg = findRegressions(rd, { results: [{ id: 'A-1', status: 'na' }], current_tier: 'A' }, b);
+  assert.deepStrictEqual(reg, { rules: [{ id: 'B-1', title: undefined, status: 'not audited' }], levelDrop: { current: 'A', baseline: 'B' } });
   console.log('selftest ok');
 }
 
 // ---------- CLI dispatch ----------
 
-const USAGE = 'usage: eqc.mjs <selftest|reset|report [--write]|rank [keyword]|ids <...>|get <ID...>|merge <file>|chunks <ID>|check-ids <doc>|milestone add <json>|config get <key>>';
+const USAGE = 'usage: eqc.mjs <selftest|reset|report [--write]|rank [keyword]|ids <...>|get <ID...>|merge <file>|guard|chunks <ID>|check-ids <doc>|milestone add <json>|config get <key>>';
 
 export function main(argv = process.argv.slice(2)) {
   const [cmd, ...args] = argv;
@@ -497,6 +585,7 @@ export function main(argv = process.argv.slice(2)) {
     case 'ids': return cmdIds(args[0]);
     case 'get': return cmdGet(args);
     case 'merge': return args[0] ? cmdMerge(args[0]) : fail('usage: eqc.mjs merge <file>');
+    case 'guard': return cmdGuard();
     case 'chunks': return cmdChunks(args[0]);
     case 'check-ids': return cmdCheckIds(args[0]);
     case 'milestone': return cmdMilestone(args[0], args[1]);

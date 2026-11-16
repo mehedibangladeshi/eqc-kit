@@ -15,6 +15,14 @@ Outputs: fixed code in the working tree, merged compliance results, milestone en
 1. Input is a rule ID -> run `get <ID>`, skip to Step 3 with that rule.
 2. Otherwise run `rank [keyword]` (keyword only if the input reads as one). Exit 2 or "no index" -> stop, tell the user to run `eqc check`.
 
+## Code map
+Once per run, before any audit/plan/fix: follow `.eqc/prompts/codemap.md` and include its `MAP:` line in every planner, fixer and audit brief.
+
+## Guard
+- After each fix (and each chunk): re-audit the touched protected rules plus the target, `merge`, then run `node .eqc/bin/eqc.mjs guard`. A fix is not done while guard exits 1: repair the regression first.
+- Never edit or delete `.eqc/baseline.json`. Never weaken lint/test/CI/config thresholds to make a rule or guard pass.
+- Any user-facing mention of a rule is `ID — title`, never a bare ID (titles from `get`/`rank`).
+
 ## Step 2 — pick
 1. Show the top 10 ranked lines as printed; say how many more exist.
 2. Ask the user to choose one or more (as a multiple-choice question if your tool supports it).

@@ -40,6 +40,26 @@ _Avoid_: score, grade
 The highest Tier reached. A Tier is reached when every Rule in it and in every lower Tier has a Verdict and none is a fail (partial and na do not block; unaudited Rules do). If the lowest Tier has a fail, Compliance level is HARD_FAIL (it takes precedence); if it has no fail but is not fully audited, the level is NONE.
 _Avoid_: score, current tier
 
+**Baseline**:
+The highest Compliance level the project has reached, plus every Rule that has passed, recorded by the Engine in `.eqc/baseline.json`. It only ever rises; a later fail never lowers it.
+_Avoid_: snapshot, ratchet file
+
+**Protected rule**:
+A Rule recorded as pass in the Baseline. Any later Verdict other than pass or na for it is a Regression.
+_Avoid_: locked rule, frozen rule
+
+**Regression**:
+A Protected rule whose current Verdict is fail or partial, or a Compliance level below the Baseline level.
+_Avoid_: break, drop
+
+**Guard**:
+The Engine check (`eqc guard`) that compares current Verdicts with the Baseline and exits non-zero on any Regression. It reads recorded Verdicts only; re-auditing is the agent's job.
+_Avoid_: gate (a Gate is an approval pause), lock
+
+**Code map**:
+A pre-built index of the project's code (symbols, calls, dependencies), such as a graphify graph, used to explore before reading files. Used only when fresh: not older than the latest commit or uncommitted changes.
+_Avoid_: code graph, codemapper (when meaning the concept)
+
 ### Improving
 
 **Effort tier**:

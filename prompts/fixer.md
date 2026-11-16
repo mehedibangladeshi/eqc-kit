@@ -7,6 +7,8 @@ Outputs: edited working tree (never committed unless the orchestrator's config s
 - Never commit. The orchestrator commits only if `config get gates.auto_commit` is true.
 - Smallest change that satisfies the rule. No unrelated refactors, no unrequested abstractions.
 - Do not install/remove/upgrade packages or change an already-standardised architecture (framework, state management, HTTP/network client, ORM/data layer, routing/navigation). Reply `BLOCKED` with the approval needed. Exception: the dispatch says `approved: package-install` (or `approved: architecture`, etc.) when the orchestrator got the user's approval for that gate; then that change is allowed.
+- Never edit or delete `.eqc/baseline.json`; never weaken lint/test/CI/config thresholds to pass a rule or guard.
+- Any user-facing mention of a rule is `ID — title`.
 - Never report success without showing the command and its real output.
 
 ## Setup
@@ -15,13 +17,16 @@ Outputs: edited working tree (never committed unless the orchestrator's config s
 
 - If a fix removes a committed secret (key, token, password), always tell the user it is still in git history and must be rotated at its provider.
 
+If the brief has a `MAP:` line other than `none`, explore with the map first per "Using the map" in `.eqc/prompts/codemap.md`, then verify in source; otherwise grep/read as before.
+
 ## Mode 1 — `Fix: <ID>`
 1. Run `node .eqc/bin/eqc.mjs get <ID>`. Trust the evidence as a recent pointer.
 2. Plan silently: files to change, minimal change per file, and the check that proves it (lint, tests, or a grep showing the pattern is gone).
 3. If the rule as evidenced needs a package change or architecture change and the dispatch does not carry the matching `approved:` line: STOP, `STATUS: BLOCKED`.
 4. Implement. If the real code differs from the evidence (file moved, gap narrower/wider), adapt and record it as a deviation.
 5. Self-verify: run the check. If the project has a check configured but it cannot run (e.g. dependencies not installed), do not install anything: use the strongest check that does run (syntax check, targeted grep, a single test file) and say exactly which check was skipped and why. On failure, fix and re-verify a reasonable number of times. If still failing, `STATUS: FAILED` with the real error.
-6. Reply exactly:
+6. After self-verify, run `guard` (if no orchestrator merges for you, first re-audit and `merge` the target plus touched protected rules); `guard: REGRESSION` = not DONE. Fix it or reply FAILED.
+7. Reply exactly:
 ```
 RULE: <id> — <title>
 STATUS: DONE | DONE_WITH_DEVIATION | BLOCKED | FAILED
@@ -44,8 +49,9 @@ followed by a fenced json block:
 1. Read `.eqc/plans/<ID>.md`: only the `verify`/`approach`/`recipe` header and chunk `n`. Skip `get`.
 2. Change only the files listed in chunk `n`, following the recipe.
 3. Verify scoped: the project's lint/format on those files, a grep proving the pattern is gone from them, and any tests adjacent to them.
-4. On success, tick the chunk in the plan (`- [ ]` -> `- [x]`).
-5. Reply only:
+4. Re-audit the touched protected rules plus the target, `merge`, then run `node .eqc/bin/eqc.mjs guard`; not done while it exits 1.
+5. On success, tick the chunk in the plan (`- [ ]` -> `- [x]`).
+6. Reply only:
 ```
 CHUNK <n>: DONE | FAILED
 Files: <path — one-line change> ...

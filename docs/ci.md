@@ -45,10 +45,22 @@ Things worth checking in review:
 - A fix marked `pass` has evidence you agree with. Evidence is in `.eqc/compliance.json`; run `node .eqc/bin/eqc.mjs get <ID>` to see it.
 - CI config, dependency and lockfile changes. These are the ones your Gates exist for.
 - For a large fix, the Plan in `.eqc/plans/<ID>.md` shows the intended approach and which Chunks are done.
-- No regression: rules that passed before still pass. Ask the agent for `eqc check recheck`, or `full` before a release.
+- No regression: `node .eqc/bin/eqc.mjs guard` prints `ok`. Ask the agent for `eqc check recheck`, or `full` before a release.
 
 ## Running in a pipeline
 
 The installer works without prompts: `npx eqc-kit init --yes --config answers.json`, see [configuration.md](configuration.md#non-interactive-setup). `npx eqc-kit doctor` exits 1 when the install is broken, so it can gate a job cheaply. The audit itself needs an agent, so it is not run in CI by eqc-kit.
 
-Planned, not available yet: a `report --check-tier` option to fail a PR when the Compliance level regresses. Until then, review the report diff as described above.
+## Guard in CI
+
+`node .eqc/bin/eqc.mjs guard` compares the committed `.eqc/compliance.json` with `.eqc/baseline.json`. It exits 1, failing the job, when a protected Rule is now `fail`, `partial` or unaudited, or when the level has dropped below the baseline. It runs no agent, so it is cheap to run on every PR:
+
+```yaml
+# .github/workflows/ci.yml, after checkout and Node setup
+- name: EQC guard
+  run: node .eqc/bin/eqc.mjs guard
+```
+
+Before the first merge there is no `baseline.json`, and `guard` passes with `guard: no baseline yet`.
+
+`guard` reads recorded Verdicts only; it does not audit. So a PR that touches Rules must include a re-audit of them: run `eqc check <IDs>` (or `eqc check recheck`) in your agent, merge, and commit the updated `.eqc/compliance.json`, `.eqc/baseline.json` and report. Otherwise CI checks stale results. Details are in [engine-commands.md](engine-commands.md#guard).

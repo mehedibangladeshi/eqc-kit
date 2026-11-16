@@ -8,6 +8,7 @@ eqc-kit helps you and your AI coding agent raise a project's compliance with a w
 - The agent **audits** the code and records a **Verdict** (`pass`, `partial`, `fail`, or `na` when the Rule does not apply) with evidence for each Rule.
 - A small vendored **Engine** (`.eqc/bin/eqc.mjs`) does the tier maths and writes the report. It never reads or judges your code.
 - Your **Compliance level** is the highest Tier reached: every Rule in that Tier and every lower one has a Verdict and none is `fail`. Partials and `na` do not block; unaudited Rules do.
+- A **baseline** protects the Rules that have passed. The **guard** (`node .eqc/bin/eqc.mjs guard`) fails when a protected Rule regresses or the level drops, so it can run in CI.
 - The agent then **fixes** the easiest failing Rules first, using Gates to pause for approval on risky changes, and re-audits each one.
 
 More in [docs/concepts.md](docs/concepts.md).

@@ -53,6 +53,8 @@ What it does:
 3. Copies the Standard to `.eqc/standard/`, writes `.eqc/config.json`, `.eqc/.gitignore` (`tmp/`) and the vendored Engine and Prompts.
 4. Writes the adapter files you chose, then `.eqc/manifest.json` with a hash of every Managed file.
 
+With the `claude-code` adapter, `init` also writes a managed block into `CLAUDE.md` between `<!-- eqc-kit:start -->` and `<!-- eqc-kit:end -->`, titled "EQC compliance guard". It sets the rules for development work: re-audit affected protected Rules, run `node .eqc/bin/eqc.mjs guard`, and never finish with a regression. The `AGENTS.md` block carries the same guard rules, so other agents follow them too. See [concepts.md](concepts.md#baseline-and-guard).
+
 Defaults under `--yes`: Standard `example`, detected tags, CI paths and package managers, every Gate `true` except `auto_commit`, report at `docs/eqc/COMPLIANCE.md`, no cheaper model. The default adapters are `claude-code` if `.claude/` or `CLAUDE.md` exists plus `agents-md` if `AGENTS.md` exists; if none of those exist, both.
 
 An existing `AGENTS.md` is kept: the eqc-kit block is appended between `<!-- eqc-kit:start -->` and `<!-- eqc-kit:end -->`. An existing file at a path eqc-kit wants to write, that it did not write, is kept and reported unless you confirm the overwrite (or pass `--force`):
@@ -134,6 +136,7 @@ Answering `n` prints `aborted.` and exits 0.
 | `.eqc/bin/`, `.eqc/prompts/`, `.eqc/manifest.json` | `.eqc/config.json`, `.eqc/standard/`, `rules.json`, `compliance.json`, `milestones.json`, `plans/` | all of `.eqc/` |
 | The `.claude/skills/eqc-*` and `.claude/agents/eqc-*` files | The report file (for example `docs/eqc/COMPLIANCE.md`) | |
 | The eqc-kit block in `AGENTS.md`; the file itself only if nothing else is left in it | | |
+| The eqc-kit guard block in `CLAUDE.md` (only the block; the rest of the file is kept) | | |
 
 ```
 $ npx eqc-kit uninstall --yes
