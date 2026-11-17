@@ -18,8 +18,11 @@ First, if `config get standard.source` is `example`, say once before indexing: "
 - A tier id (e.g. `BRONZE`) or comma-separated rule IDs -> Path C.
 - Anything else (file path, pasted text, URL, plus optional instructions) -> Path D.
 
+## Code map (Paths B, C, D)
+Follow `.eqc/prompts/codemap.md` once, then include its `MAP:` line in every audit and indexer brief.
+
 ## Path A — cached display (free)
-1. Run `report`. Print verbatim.
+1. Run `report`. Print it exactly as the engine outputs it: never shortened, summarized or turned into a chart.
 2. Stop. Run no audit.
 
 ## Path B — re-audit, no new source
@@ -32,7 +35,7 @@ First, if `config get standard.source` is `example`, say once before indexing: "
 1. Run `get <ids>` first; keep status and current tier as the "before" snapshot.
 2. Run `ids <arg>` to resolve tiers/ids. Audit only those ids (one audit per output line).
 3. Temp file -> `merge` per result.
-4. Print a short before/after for just those rules: status, and whether the compliance level changed. Then Closing (one-line only).
+4. Print a short before/after for just those rules, one line each: `ID — title: <before> → <after>`, and whether the compliance level changed (titles from `get`). Then Closing (one-line only).
 
 ## Path D — new or missing source: reset and rebuild
 1. Resolve the source to a FILE (indexer line numbers refer to a file):
@@ -48,7 +51,11 @@ First, if `config get standard.source` is `example`, say once before indexing: "
 6. Temp file -> `merge` per result.
 7. Print `report`, then Closing.
 
+## Guard
+After every `merge`, run `node .eqc/bin/eqc.mjs guard`. Exit 1 = a previously achieved rule broke: show its lines verbatim under a `Regressions` heading before the closing line and say so. Never edit or delete `.eqc/baseline.json`.
+
 ## Closing
-- After the report, add one line naming what blocks the next compliance level (from the fail/partial lines shown, plus any unaudited count; a `NONE` level means the lowest tier still has unaudited rules, so suggest `eqc check full`). If the level is HARD_FAIL, the next level is the lowest tier: name its fails.
+- Always name rules as `ID — title`, never bare IDs.
+- After the report, add one line naming what blocks the next compliance level as `ID — title` (max ~5, then "+N more — see report"; from the report's `## To reach` list, plus any unaudited count; a `NONE` level means the lowest tier still has unaudited rules, so suggest `eqc check full`). If the level is HARD_FAIL, the next level is the lowest tier: name its fails.
 - After Path D only, also say: "Commit `.eqc/` (tmp/ is ignored) and the report so teammates share the level."
 - End with: `next: eqc fix`

@@ -6,6 +6,7 @@ Outputs: `.eqc/plans/<ID>.md`, or the reply `BLOCKED: <reason>`. Reply is at mos
 ## Steps
 1. Run `node .eqc/bin/eqc.mjs get <ID>` for the rule and its latest evidence. Read project convention docs (AGENTS.md, CONTRIBUTING.md, lint/format configs, if present) only where the fix lands.
 2. Verify the evidence with read-only greps/commands to get the real, current list of files to change. Never edit source.
+If the brief has a `MAP:` line other than `none`, explore with the map first per "Using the map" in `.eqc/prompts/codemap.md`, then verify in source; otherwise grep/read as before.
 3. If the fix needs installing/removing a package, or replacing an already-standardised architecture (state library, network client, navigation): write nothing; reply `BLOCKED: <decision needed>`.
 4. Write ONLY `.eqc/plans/<ID>.md`:
 ```

@@ -276,12 +276,12 @@ test('uninstall keeps edited files/blocks with a warning; --force removes; empty
   const r = repo({ 'AGENTS.md': '# Mine\n' });
   cli(r, ['init', '--yes', '--config', writeCfg(r, { adapters: ['claude-code', 'agents-md'] })]);
   fs.appendFileSync(path.join(r, SK), 'my edit\n');
-  fs.writeFileSync(path.join(r, 'AGENTS.md'), rd(r, 'AGENTS.md').replace('Don\'t regress', 'Never regress'));
+  fs.writeFileSync(path.join(r, 'AGENTS.md'), rd(r, 'AGENTS.md').replace('Read the prompt file', 'Skim the prompt file'));
   const res = cli(r, ['uninstall', '--yes']);
   assert.match(res.stderr, /kept edited .claude\/skills\/eqc-check\/SKILL.md/);
   assert.match(res.stderr, /kept edited eqc-kit block/);
   assert.ok(ex(r, SK) && !ex(r, '.claude/skills/eqc-fix'));
-  assert.match(rd(r, 'AGENTS.md'), /Never regress/);
+  assert.match(rd(r, 'AGENTS.md'), /Skim the prompt file/);
   assert.ok(ex(r, '.claude/skills'));
 });
 
@@ -321,4 +321,23 @@ test('doctor: missing managed file is an error', () => {
   const res = cli(r, ['doctor']);
   assert.equal(res.status, 1);
   assert.match(res.stdout, /✖ managed file missing: .eqc\/prompts\/fix.md/);
+});
+
+test('claude-code: CLAUDE.md guard block written, user text kept, uninstall strips only block, doctor ok', () => {
+  const r = repo({ 'CLAUDE.md': '# Mine\n\nkeep\n' });
+  assert.equal(cli(r, ['init', '--yes', '--config', writeCfg(r, { adapters: ['claude-code'] })]).status, 0);
+  const t = rd(r, 'CLAUDE.md');
+  assert.match(t, /^# Mine\n\nkeep\n\n<!-- eqc-kit:start -->\n## EQC compliance guard[\s\S]*\/eqc-check <IDs>[\s\S]*eqc\.mjs guard[\s\S]*baseline\.json[\s\S]*<!-- eqc-kit:end -->\n$/);
+  assert.ok(!t.includes('{{'));
+  assert.ok(JSON.parse(rd(r, '.eqc/manifest.json')).files['CLAUDE.md#eqc-kit']);
+  assert.equal(cli(r, ['doctor']).status, 0);
+  cli(r, ['uninstall', '--yes']);
+  assert.equal(rd(r, 'CLAUDE.md'), '# Mine\n\nkeep\n');
+});
+
+test('agents-md block carries the same guard text with the eqc check command', () => {
+  const r = repo({ 'AGENTS.md': '# Mine\n' });
+  cli(r, ['init', '--yes', '--config', writeCfg(r, { adapters: ['agents-md'] })]);
+  assert.match(rd(r, 'AGENTS.md'), /`eqc check` <IDs>[\s\S]*eqc\.mjs guard/);
+  assert.ok(!ex(r, 'CLAUDE.md'));
 });

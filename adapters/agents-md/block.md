@@ -8,5 +8,5 @@
 
 Read the prompt file and follow it exactly; when it says to run a sub-task, read that prompt file and do it yourself (sequentially) unless your tool supports sub-agents.
 
-Don't regress a rule marked pass in {{report_path}}.
+{{guard_rules}}
 <!-- eqc-kit:end -->

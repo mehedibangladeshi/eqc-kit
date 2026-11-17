@@ -1,6 +1,6 @@
 # Claude Code
 
-Claude Code gets the native adapter: two skills you type as slash commands, and four subagents they dispatch. Other agents use `AGENTS.md` instead; see the [README](../../README.md#supported-agents). You can install both.
+Claude Code gets the native adapter: two skills you type as slash commands, four subagents they dispatch, and a managed guard block in `CLAUDE.md`. Other agents use `AGENTS.md` instead; see the [README](../../README.md#supported-agents). You can install both.
 
 Select the `claude-code` adapter at `npx eqc-kit init` (it is the default when `.claude/` or `CLAUDE.md` exists, or when nothing else exists).
 
@@ -21,6 +21,7 @@ Select the `claude-code` adapter at `npx eqc-kit init` (it is the default when `
 - **Skills are the entry points.** `/eqc-check` and `/eqc-fix` are thin wrappers. Each says "follow `.eqc/prompts/check.md` (or `fix.md`) exactly" and adds Claude Code specifics: dispatch subagents, use AskUserQuestion for choices, put temp files in the session scratchpad.
 - **Agents are the sub-tasks.** Each subagent is another thin wrapper that follows one Prompt: `eqc-index` (`index.md`), `eqc-audit` (`audit.md`), `eqc-planner` (`plan.md`), `eqc-fixer` (`fixer.md`). Their tool lists are limited to what the job needs; only the fixer can edit existing files (the indexer and planner can only write their own output).
 - **Parallel per Tier.** `/eqc-check` dispatches one `eqc-audit` per Tier in a single message, so Tiers are audited at the same time. Fixes are the opposite: one Rule at a time, never two fixers at once.
+- **CLAUDE.md guard block.** `init` writes a managed block between `<!-- eqc-kit:start -->` and `<!-- eqc-kit:end -->`, titled "EQC compliance guard". For any development work (features, fixes, config or dependency changes, refactors, file moves), it tells Claude to re-audit affected protected Rules, run `node .eqc/bin/eqc.mjs guard`, never finish with a regression, never edit `.eqc/baseline.json` or weaken lint, test, CI or type-check settings, and ask you before a protected Rule must change. `uninstall` removes only this block.
 
 All the real logic lives in the Prompts in `.eqc/prompts/`, which are the same ones every other agent follows.
 
@@ -33,10 +34,10 @@ In Claude Code (this is an agent conversation, described from [check.md](../../p
 | `/eqc-check` | With an existing Index: prints the saved report and audits nothing (free). Without one: indexes the Standard at `standard.path`, validates it, audits every Rule. |
 | `/eqc-check recheck` | Re-audits only Rules that are `fail` or `partial`, or have no Verdict. |
 | `/eqc-check full` | Re-audits every Rule. |
-| `/eqc-check SILVER` or `/eqc-check BRONZE-6,GOLD-1` | Re-audits one Tier or the listed Rules, and shows before and after. |
+| `/eqc-check SILVER` or `/eqc-check BRONZE-6,GOLD-1` | Re-audits one Tier or the listed Rules, and shows each as `ID — title: before → after`. |
 | `/eqc-check docs/my-standard.md` | Rebuilds the Index from that file and re-audits everything. Text after the path is passed to the indexer as instructions. A URL or pasted text also works. |
 
-It ends with what blocks the next Compliance level and `next: eqc fix`.
+The report is printed verbatim: the level, the `Baseline:` line with guard status, `## Regressions` when any, `## To reach <Tier>` and `## Not audited`. Rules are named `ID — title`. The closing line names the blocking Rules the same way, then `next: eqc fix`. See [engine-commands.md](../engine-commands.md#report---write) for the report layout.
 
 ## /eqc-fix
 
@@ -48,7 +49,7 @@ Also an agent conversation, described from [fix.md](../../prompts/fix.md):
 | `/eqc-fix SILVER-2` | Skips the list and fixes that Rule. |
 | `/eqc-fix logging` | Filters the list to Rules mentioning that word. |
 
-Per Rule: Gates first (it asks if the fix touches CI, packages, architecture, or the top Tier), then a single fixer pass for small fixes, or a Plan you approve and Chunks run one at a time for medium and large ones. After each it re-audits, merges the Verdict and tells you before and after. Changes are left uncommitted unless `gates.auto_commit` is true. See [getting-started.md](../getting-started.md#4-fix).
+Per Rule: Gates first (it asks if the fix touches CI, packages, architecture, or the top Tier), then a single fixer pass for small fixes, or a Plan you approve and Chunks run one at a time for medium and large ones. After each it re-audits, merges the Verdict and tells you before and after, then runs `guard` and shows any regression as `ID — title — now fail|partial|not audited`. Changes are left uncommitted unless `gates.auto_commit` is true. See [getting-started.md](../getting-started.md#4-fix).
 
 ## Cheaper model for mechanical work
 

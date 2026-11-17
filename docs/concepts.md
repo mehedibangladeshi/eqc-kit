@@ -130,6 +130,18 @@ You may edit a Plan before approving it.
 
 Each fix attempt ends with a Milestone in `.eqc/milestones.json`: rule, tier, date, one-line summary and status `done`, `partial`, `blocked` or `failed`. It is a history log. A rebuild from a new Standard keeps it.
 
+## Baseline and guard
+
+The **baseline** (`.eqc/baseline.json`) is a ratchet. Each merge records the Compliance level and every Rule that has passed so far, as the protected Rules. A protected Rule stays protected if a later audit marks it partial or fail, and the level in the baseline never goes down.
+
+The **guard** (`eqc guard`) compares the current Verdicts with the baseline. It fails when a protected Rule is now `fail`, `partial` or unaudited, or when the level drops below the baseline. `na` is not a regression. The guard checks recorded Verdicts; it does not audit, so re-audit the affected Rules first. The only way to lower the baseline is to delete the file by hand, which is a deliberate decision.
+
+The agent is told to follow the same loop for any development work: re-audit affected protected Rules, run the guard, and never finish with a regression. Claude Code gets this as a managed block in `CLAUDE.md`; other agents get it in the `AGENTS.md` block. In CI, the guard is a single command; see [ci.md](ci.md#guard-in-ci).
+
+## Code map
+
+If the project has a code map, `/eqc-check` and `/eqc-fix` use it to find related code. A map is a code-graph index (for example `graphify-out/graph.json`, or `.codegraph/`, `.gitnexus/` or `.serena/`), or a code mapper that the project's `CLAUDE.md` or `AGENTS.md` names. Each run checks the map once for freshness (its file time against the last commit and uncommitted changes) and uses it only when it is fresh. The agent confirms map facts in source. A stale map is skipped with a one-line hint to refresh it, such as `graphify update .`. The agent never builds or refreshes the map itself.
+
 ## What lives in `.eqc/`
 
 | Path | What | Commit? |
@@ -139,6 +151,7 @@ Each fix attempt ends with a Milestone in `.eqc/milestones.json`: rule, tier, da
 | `config.json` | Report path, stack tags, Gates | Yes |
 | `rules.json` | The Index | Yes |
 | `compliance.json` | Latest Verdict per Rule, tier summary, level | Yes |
+| `baseline.json` | Protected Rules and the highest level reached, read by `guard` | Yes |
 | `milestones.json` | Fix history | Yes |
 | `plans/` | Plans and Chunk progress | Yes |
 | `doc-meta.md` | Notes from indexing (version, skipped rules, conflicts) | Yes |
