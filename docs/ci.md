@@ -13,6 +13,7 @@ Commit:
 | `.claude/skills/eqc-*` and `.claude/agents/eqc-*` | The Claude Code adapter files. |
 | `CLAUDE.md` (if eqc-kit wrote its block there) | Tells Claude Code to follow the Rules while writing code. |
 | The report, for example `docs/eqc/COMPLIANCE.md` | The readable result. |
+| The HTML report, for example `docs/eqc/COMPLIANCE.html` | The same result as a page to open in a browser. Review the Markdown diff instead. |
 
 Do not commit `.eqc/tmp/`. `init` writes `.eqc/.gitignore` containing `tmp/`, so a plain `git add .eqc` is safe. Scratch files there are audit output waiting to be merged.
 

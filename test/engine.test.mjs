@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import {
   buildTierSummary, computeCurrentTier, rankCandidates, selectIds, groupByTier,
-  parsePlanChunks, formatChunkStatus, checkIds, buildDigest, updateBaseline, findRegressions,
+  parsePlanChunks, formatChunkStatus, checkIds, buildDigest, updateBaseline, findRegressions, buildHtmlReport,
 } from '../engine/eqc.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -516,4 +516,47 @@ test('report: To reach lists blocking rules as ID — title; Not audited section
   md = sb.run('report').stdout;
   assert.doesNotMatch(md, /## To reach/);
   assert.doesNotMatch(md, /## Not audited/);
+});
+
+// ---------- html report ----------
+
+test('html report: content, escaping, no scripts/URLs, determinism, files', () => {
+  const sb = sandbox('example');
+  const evil = '<script>alert(1)</script> & "x"';
+  const r = sb.run('merge', sb.writeTmp('h.json', [
+    { id: 'BRONZE-1', status: 'fail', evidence: evil },
+    { id: 'SILVER-1', status: 'partial', evidence: 'few' },
+    { id: 'GOLD-1', status: 'pass' },
+  ]));
+  assert.match(r.stdout, /report: .*eqc-report\.md\nhtml: .*eqc-report\.html\n/);
+  const htmlFile = path.join(sb.root, 'docs', 'eqc-report.html');
+  const html = fs.readFileSync(htmlFile, 'utf8');
+  const rd = loadRules('example');
+  const comp = sb.readJson('compliance.json'), base = sb.readJson('baseline.json');
+  assert.equal(buildHtmlReport(rd, comp, base), html);
+  assert.equal(buildHtmlReport(rd, comp, base), buildHtmlReport(rd, comp, base));
+  for (const t of rd.tiers) assert.ok(html.includes(t.name));
+  assert.ok(html.includes('HARD_FAIL') && html.includes('Needs attention') && html.includes('All rules'));
+  assert.equal(html.split('<details').length - 1, rd.tiers.length);
+  assert.match(html, /<details open><summary>Bronze/);
+  assert.ok(html.includes('&lt;script&gt;alert(1)&lt;/script&gt; &amp; &quot;x&quot;'));
+  assert.doesNotMatch(html, /https?:|<script|@import|url\(/i);
+  fs.rmSync(htmlFile);
+  assert.equal(sb.run('report', '--write').stdout.split('\n')[1].startsWith('html: '), true);
+  assert.equal(fs.existsSync(htmlFile), true);
+});
+
+test('html report: top tier fully passed -> Nothing blocking', () => {
+  const rd = loadRules('example');
+  const results = rd.rules.map(r => ({ id: r.id, status: 'pass' }));
+  const tier_summary = buildTierSummary(rd.rules, results, rd.tiers);
+  const html = buildHtmlReport(rd, { audited_at: '2026-01-01', results, tier_summary, current_tier: 'GOLD' }, null);
+  assert.ok(html.includes('Nothing blocking'));
+});
+
+test('html report: regression on a rule with no result uses the unaudited chip class', () => {
+  const rd = loadRules('example');
+  const html = buildHtmlReport(rd, { results: [], tier_summary: buildTierSummary(rd.rules, [], rd.tiers), current_tier: 'NONE' }, { level: 'NONE', protected: ['BRONZE-1'] });
+  assert.ok(html.includes('<span class="chip unaudited">not audited</span>'));
+  assert.ok(!html.includes('class="chip not audited"'));
 });

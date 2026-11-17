@@ -12,6 +12,7 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 - `.eqc/hooks/pre-commit` (`verify`) and `pre-push` (`verify` + `guard`), enabled per clone with `npx eqc-kit hooks` (`--off` to disable); never replaces another hook manager. CI example in docs/ci.md.
 - Report sections: a `Baseline:` line, `## Regressions`, `## To reach <Tier>` (blocking Rules) and `## Not audited`.
 - Code map: `/eqc-check` and `/eqc-fix` use an existing code map when it is fresh, skip a stale one with a refresh hint, and never build one.
+- HTML report `COMPLIANCE.html` written next to the Markdown report on every `merge` and `report --write`: a single self-contained page (no JavaScript) with level and tier progress, what needs attention, and all Rules by tier.
 
 ### Changed
 - `/eqc-check` prints the report verbatim and names Rules as `ID — title`; re-checks show `before → after`; after each merge it runs the guard and shows regressions.

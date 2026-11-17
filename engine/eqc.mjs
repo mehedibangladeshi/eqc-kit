@@ -351,6 +351,92 @@ export function buildReport(rulesDoc, compliance, baseline) {
   return out.join('\n');
 }
 
+// Single-page, self-contained HTML twin of buildReport (no scripts, no external URLs).
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+
+const HTML_CSS = `
+:root{--bg:#f7f7f5;--card:#fff;--fg:#1d1f23;--mute:#5f6670;--line:#e2e4e8;--pass:#1f8a4c;--partial:#8f5f00;--fail:#c62828;--na:#666b74;--unaudited:#d5d8dd;--chip-fg:#fff}
+@media (prefers-color-scheme:dark){:root{--bg:#14161a;--card:#1d2026;--fg:#e8eaed;--mute:#a0a6af;--line:#2d3139;--pass:#3fb877;--partial:#e0a53a;--fail:#ef6b6b;--na:#7b8089;--unaudited:#454a53;--chip-fg:#101215}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+main{max-width:960px;margin:0 auto;padding:32px 16px 48px}
+section{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:20px 24px;margin:0 0 20px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+h1{margin:0 0 4px;font-size:1.4rem}h2{margin:0 0 12px;font-size:1.1rem}h3{margin:16px 0 6px;font-size:.95rem;color:var(--mute)}
+.level{font-size:2.4rem;font-weight:700;line-height:1.2;margin:8px 0}
+.meta{color:var(--mute);display:flex;flex-wrap:wrap;gap:4px 16px}
+.row{display:grid;grid-template-columns:110px 1fr 90px;gap:12px;align-items:center;margin:8px 0}
+.bar{display:flex;height:14px;border-radius:7px;overflow:hidden;background:var(--line)}
+.bar i{display:block;height:100%}
+.chip{background:var(--unaudited)}
+.pass{background:var(--pass)}.partial{background:var(--partial)}.fail{background:var(--fail)}.na{background:var(--na)}.unaudited{background:var(--unaudited)}
+.chip{display:inline-block;padding:0 8px;border-radius:9px;font-size:.78rem;font-weight:600;color:var(--chip-fg)}
+.chip.unaudited{color:var(--fg)}
+ul{list-style:none;margin:0;padding:0}li{padding:6px 0;border-top:1px solid var(--line)}li:first-child{border-top:0}
+li b{font-variant-numeric:tabular-nums}.ev{display:block;color:var(--mute);font-size:.9rem}
+details{border-top:1px solid var(--line);padding:8px 0}summary{cursor:pointer;font-weight:600}
+footer{color:var(--mute);text-align:center;font-size:.85rem}
+@media (max-width:560px){.row{grid-template-columns:1fr}}
+@media print{body{background:#fff}section{box-shadow:none}details>*{display:block!important}details::details-content{content-visibility:visible;display:block}}
+`;
+
+export function buildHtmlReport(rulesDoc, compliance, baseline) {
+  const { tiers, rules } = rulesDoc;
+  const std = rulesDoc.standard || {};
+  const tierName = new Map(tiers.map(t => [t.id, t.name]));
+  const ids = tierIds(tiers);
+  const sum = compliance.tier_summary || {};
+  const cur = compliance.current_tier;
+  const unaudited = totalUnaudited(sum);
+  const resById = new Map((compliance.results || []).map(r => [r.id, r]));
+  const statusOf = id => resById.get(id)?.status || 'unaudited';
+  const chip = st => `<span class="chip ${['pass', 'partial', 'fail', 'na'].includes(st) ? st : 'unaudited'}">${esc(st)}</span>`;
+  const li = (r, st, extra = '') => {
+    const ev = truncate(resById.get(r.id)?.evidence || resById.get(r.id)?.notes || '', 160);
+    return `<li><b>${esc(r.id)}</b> — ${esc(r.title)} ${chip(st)}${extra}${ev ? `<span class="ev">${esc(ev)}</span>` : ''}</li>`;
+  };
+  const level = cur === 'HARD_FAIL' ? 'HARD_FAIL' : cur === 'NONE' ? 'not reached' : (tierName.get(cur) || cur || 'not audited');
+  const reg = baseline && findRegressions(rulesDoc, compliance, baseline);
+  const k = baseline ? regressionCount(reg) : 0;
+
+  const tierRows = ids.map(id => {
+    const s = sum[id] || { total: 0 };
+    const seg = { pass: s.pass || 0, partial: s.partial || 0, fail: s.fail || 0, na: s.na || 0, unaudited: unauditedCount(s) };
+    const bar = s.total ? Object.entries(seg).filter(([, n]) => n).map(([c, n]) => `<i class="${c}" style="width:${(n * 100 / s.total).toFixed(1)}%" title="${c} ${esc(n)}"></i>`).join('') : '';
+    return `<div class="row"><span>${esc(tierName.get(id))}</span><div class="bar">${bar}</div><span>${esc(seg.pass)}/${esc(s.total)} pass</span></div>`;
+  }).join('');
+
+  const next = ids[Math.max(levelRank(cur, tiers), -1) + 1];
+  const upTo = new Set(next ? ids.slice(0, ids.indexOf(next) + 1) : []);
+  const blockers = rules.filter(r => upTo.has(r.tier) && ['fail', 'unaudited'].includes(statusOf(r.id)));
+  const attn = [];
+  if (k) {
+    const drop = reg.levelDrop ? `<li>Level ${esc(reg.levelDrop.current)} is below baseline ${esc(reg.levelDrop.baseline)}</li>` : '';
+    attn.push(`<h3>Regressions</h3><ul>${reg.rules.map(r => `<li><b>${esc(r.id)}</b> — ${esc(r.title)} — now ${chip(r.status)}</li>`).join('')}${drop}</ul>`);
+  }
+  if (blockers.length) attn.push(`<h3>To reach ${esc(tierName.get(next) || next)}</h3><ul>${blockers.map(r => li(r, statusOf(r.id))).join('')}</ul>`);
+  if (!attn.length) attn.push('<p>Nothing blocking</p>');
+
+  const all = ids.map(id => {
+    const s = sum[id] || { total: 0 };
+    const rs = rules.filter(r => r.tier === id);
+    return `<details${(s.fail || s.partial) ? ' open' : ''}><summary>${esc(tierName.get(id))} — ${esc(s.pass || 0)}/${esc(s.total)} pass, ${esc(s.partial || 0)} partial, ${esc(s.fail || 0)} fail</summary><ul>${rs.map(r => li(r, statusOf(r.id))).join('')}</ul></details>`;
+  }).join('');
+
+  return `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${esc(std.title || 'EQC')} — compliance</title>
+<style>${HTML_CSS}</style></head><body><main>
+<section><h1>${esc(std.title || 'EQC')} v${esc(std.version || '?')}</h1>
+<div class="level">${esc(level)}</div>
+<div class="meta"><span>Audited ${esc(compliance.audited_at || 'never')}</span>${unaudited > 0 ? `<span>${esc(unaudited)} unaudited</span>` : ''}${baseline ? `<span>Baseline ${esc(baseline.level)}</span><span>${k ? `${esc(k)} regressions` : 'guard ok'}</span>` : ''}</div></section>
+<section><h2>Tier progress</h2>${tierRows}</section>
+<section><h2>Needs attention</h2>${attn.join('')}</section>
+<section><h2>All rules</h2>${all}</section>
+<footer>Generated by eqc-kit — do not edit by hand</footer>
+</main></body></html>
+`;
+}
+
 // Compact Rule list agents read before writing code (.eqc/RULES.md).
 export function buildDigest(rulesDoc, compliance) {
   const statusById = new Map((compliance.results || []).map(r => [r.id, r.status]));
@@ -404,12 +490,15 @@ function reportPath() {
   return path.resolve(path.dirname(stateDir()), cfg.report_path);
 }
 
+const htmlPath = p => /\.md$/i.test(p) ? p.replace(/\.md$/i, '.html') : `${p}.html`;
+
 function writeReport(rulesDoc, compliance, baseline) {
   fs.writeFileSync(file('RULES.md'), buildDigest(rulesDoc, compliance));
   const p = reportPath();
   if (!p) return null;
   fs.mkdirSync(path.dirname(p), { recursive: true });
   fs.writeFileSync(p, buildReport(rulesDoc, compliance, baseline));
+  fs.writeFileSync(htmlPath(p), buildHtmlReport(rulesDoc, compliance, baseline));
   return p;
 }
 
@@ -422,6 +511,7 @@ function cmdReport(args) {
     const p = writeReport(rulesDoc, compliance, baseline);
     if (!p) fail('report --write: no report_path in config.json');
     console.log(`report: ${p}`);
+    console.log(`html: ${htmlPath(p)}`);
     return;
   }
   process.stdout.write(buildReport(rulesDoc, compliance, baseline));
@@ -516,7 +606,10 @@ function cmdMerge(filePath) {
   const k = regressionCount(findRegressions(rulesDoc, updated, baseline));
   if (k) console.log(`guard: ${k} regressions — run eqc guard`);
   const p = writeReport(rulesDoc, updated, baseline);
-  if (p) console.log(`report: ${p}`);
+  if (p) {
+    console.log(`report: ${p}`);
+    console.log(`html: ${htmlPath(p)}`);
+  }
 }
 
 function cmdCheckIds(docPath) {
@@ -617,6 +710,8 @@ export function selftest() {
 
   const doc2 = { tiers, rules: [{ id: 'LOW-1', tier: 'LOW', verify: 'true' }, { id: 'HIGH-1', tier: 'HIGH', verify: 'true' }] };
   assert.deepStrictEqual(verifyTargets(doc2.rules, [{ id: 'LOW-1', status: 'pass' }, { id: 'HIGH-1', status: 'fail' }]).map(r => r.id), ['LOW-1']);
+  const h = buildHtmlReport({ standard: { title: 'T<' }, tiers: t3, rules }, { results: [], tier_summary: s, current_tier: 'NONE' }, null);
+  assert.ok(h.startsWith('<!doctype html>') && !h.includes('<script') && h.includes('T&lt;'));
   console.log('selftest ok');
 }
 

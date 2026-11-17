@@ -57,5 +57,6 @@ After every `merge`, run `node .eqc/bin/eqc.mjs guard`. Exit 1 = a previously ac
 ## Closing
 - Always name rules as `ID — title`, never bare IDs.
 - After the report, add one line naming what blocks the next compliance level as `ID — title` (max ~5, then "+N more — see report"; from the report's `## To reach` list, plus any unaudited count; a `NONE` level means the lowest tier still has unaudited rules, so suggest `eqc check full`). If the level is HARD_FAIL, the next level is the lowest tier: name its fails.
+- After the report, say once where the HTML report is: the path from `config get report_path` with `.html` instead of `.md`, as "Open <path> in a browser for the visual report."
 - After Path D only, also say: "Commit `.eqc/` (tmp/ is ignored) and the report so teammates share the level."
 - End with: `next: eqc fix`
