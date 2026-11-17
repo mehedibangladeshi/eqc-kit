@@ -11,7 +11,8 @@ import { fileURLToPath } from 'node:url';
 const PKG = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const VERSION = JSON.parse(fs.readFileSync(path.join(PKG, 'package.json'), 'utf8')).version;
 const USAGE = `eqc-kit ${VERSION}
-usage: eqc-kit <init|update|uninstall|doctor> [--yes] [--config file.json] [--force] [--purge] [--cwd dir]`;
+usage: eqc-kit <init|update|uninstall|doctor|hooks> [--yes] [--config file.json] [--force] [--purge] [--off] [--cwd dir]`;
+const HOOKS = '.eqc/hooks';
 const hostOf = e => (e.rel ?? e).split('#')[0]; // block key 'FILE#name' -> host file; plain rel unchanged
 const START = '<!-- eqc-kit:start -->', END = '<!-- eqc-kit:end -->';
 const AGENTS = {
@@ -134,10 +135,12 @@ function simpleDiff(oldT, newT) {
 const tpl = (rel, vars) => Object.entries(vars).reduce((s, [k, v]) => s.replaceAll(`{{${k}}}`, v), fs.readFileSync(path.join(PKG, rel), 'utf8'));
 
 // Returns [{rel, content, block?}] for every managed file/block, from config.
-function generate(cfg) {
+function generate(cfg, root) {
   const out = [{ rel: '.eqc/bin/eqc.mjs', content: fs.readFileSync(path.join(PKG, 'engine/eqc.mjs'), 'utf8') }];
   for (const f of list(path.join(PKG, 'prompts')).filter(f => f.endsWith('.md')).sort())
     out.push({ rel: `.eqc/prompts/${f}`, content: fs.readFileSync(path.join(PKG, 'prompts', f), 'utf8') });
+  for (const h of ['pre-commit', 'pre-push'])
+    out.push({ rel: `${HOOKS}/${h}`, mode: 0o755, content: fs.readFileSync(path.join(PKG, 'adapters/git-hooks', h), 'utf8') });
   const vars = { report_path: cfg.report_path };
   const guard = cmd => ({ guard_rules: tpl('adapters/guard.md', { ...vars, check_cmd: cmd }).trimEnd() });
   if (cfg.adapters.includes('claude-code')) {
@@ -148,12 +151,16 @@ function generate(cfg) {
       out.push({ rel: `.claude/skills/${s}/SKILL.md`, content: tpl(`adapters/claude-code/skills/${s}.md`, { ...vars, cheap_model_note: note }) });
     for (const [name, a] of Object.entries(AGENTS))
       out.push({ rel: `.claude/agents/${name}.md`, content: tpl('adapters/claude-code/agent.md', { name, ...a }) });
-    out.push({ rel: 'CLAUDE.md#eqc-kit', block: true, content: tpl('adapters/claude-code/claude-md.md', guard('/eqc-check')).trimEnd() });
+    // Claude Code reads AGENTS.md only when there is no CLAUDE.md. Creating one would hide the user's AGENTS.md,
+    // so the guard goes into CLAUDE.md only when it already exists or no AGENTS.md block is written.
+    if (fs.existsSync(path.join(root, 'CLAUDE.md')) || !cfg.adapters.includes('agents-md'))
+      out.push({ rel: 'CLAUDE.md#eqc-kit', block: true, content: tpl('adapters/claude-code/claude-md.md', guard('/eqc-check')).trimEnd() });
   }
   if (cfg.adapters.includes('agents-md')) out.push({ rel: 'AGENTS.md#eqc-kit', block: true, content: tpl('adapters/agents-md/block.md', { ...vars, ...guard('`eqc check`') }).trimEnd() });
   return out;
 }
 
+// Managed blocks are keyed '<file>#eqc-kit'; everything else is a whole file.
 const blockRange = t => { const s = t.indexOf(START), e = t.indexOf(END); return s === -1 || e < s ? null : [s, e + END.length]; };
 
 function current(root, e) {
@@ -173,6 +180,7 @@ function put(root, e, content) {
   }
   fs.mkdirSync(path.dirname(p), { recursive: true });
   fs.writeFileSync(p, out);
+  if (e.mode) fs.chmodSync(p, e.mode);
 }
 
 // Writes entries honouring user edits; returns the new manifest files map.
@@ -253,7 +261,7 @@ async function init(root, opts) {
     fs.writeFileSync(path.join(root, cfg.standard.path), std.content);
     writeJson(path.join(root, '.eqc/config.json'), cfg);
     fs.writeFileSync(path.join(root, '.eqc/.gitignore'), 'tmp/\n');
-    const res = await sync(root, generate(cfg), {}, { yes: opts.yes, force: opts.force, io });
+    const res = await sync(root, generate(cfg, root), {}, { yes: opts.yes, force: opts.force, io });
     writeJson(path.join(root, '.eqc/manifest.json'), manifest(res.files));
     console.log(`\neqc-kit ${VERSION} installed in ${root}`);
     console.log(`  standard : ${cfg.standard.path}  (source: ${source})`);
@@ -285,7 +293,7 @@ async function update(root, opts) {
   if (JSON.stringify(next) !== JSON.stringify(cfg)) writeJson(cfgPath, next);
   const io = makeAsker();
   try {
-    const entries = generate(next);
+    const entries = generate(next, root);
     const res = await sync(root, entries, old.files, { yes: opts.yes, force: opts.force, io });
     const nm = manifest(res.files);
     if (JSON.stringify(nm) !== JSON.stringify(old)) writeJson(path.join(root, '.eqc/manifest.json'), nm);
@@ -325,9 +333,38 @@ async function uninstall(root, opts) {
     const p = path.join(root, d);
     if (fs.existsSync(p) && list(p).length === 0) fs.rmdirSync(p);
   }
-  for (const s of ['bin', 'prompts', 'manifest.json']) fs.rmSync(path.join(root, '.eqc', s), { recursive: true, force: true });
+  if (gitHooksPath(root) === HOOKS) spawnSync('git', ['config', '--unset', 'core.hooksPath'], { cwd: root });
+  for (const s of ['bin', 'prompts', 'hooks', 'manifest.json']) fs.rmSync(path.join(root, '.eqc', s), { recursive: true, force: true });
   if (opts.purge) fs.rmSync(path.join(root, '.eqc'), { recursive: true, force: true });
   console.log(opts.purge ? 'uninstalled; .eqc/ removed.' : 'uninstalled; .eqc/ state kept (use --purge to remove).');
+}
+
+// ---------- hooks ----------
+
+const gitHooksPath = root => spawnSync('git', ['config', '--get', 'core.hooksPath'], { cwd: root, encoding: 'utf8' }).stdout?.trim() ?? '';
+
+// Points git at .eqc/hooks (per clone: git config is never committed). Never clobbers another hook setup.
+function hooks(root, opts) {
+  const cur = gitHooksPath(root);
+  if (opts.off) {
+    if (cur !== HOOKS) return console.log('hooks: eqc-kit hooks are not enabled');
+    spawnSync('git', ['config', '--unset', 'core.hooksPath'], { cwd: root });
+    return console.log('hooks: off (core.hooksPath unset)');
+  }
+  if (!fs.existsSync(path.join(root, HOOKS, 'pre-commit'))) die(`no ${HOOKS}/: run \`eqc-kit update\` first.`);
+  if (cur === HOOKS) return console.log(`hooks: already on (core.hooksPath = ${HOOKS})`);
+  const gp = spawnSync('git', ['rev-parse', '--git-path', 'hooks'], { cwd: root, encoding: 'utf8' });
+  if (gp.status !== 0) die(`${root} is not a git repo.`);
+  const existing = cur ? [] : list(path.resolve(root, gp.stdout.trim())).filter(f => !f.endsWith('.sample'));
+  if ((cur || existing.length) && !opts.force)
+    die(`${cur ? `core.hooksPath is already "${cur}"` : `existing git hooks found (${existing.join(', ')})`}; enabling would bypass them.
+Add these lines to your pre-commit and pre-push hooks instead (or rerun with --force):
+  sh ${HOOKS}/pre-commit
+  sh ${HOOKS}/pre-push`);
+  const r = spawnSync('git', ['config', 'core.hooksPath', HOOKS], { cwd: root, encoding: 'utf8' });
+  if (r.status !== 0) die(`git config failed: ${r.stderr.trim()}`);
+  console.log(`hooks: on — pre-commit runs verify, pre-push runs verify + gate (core.hooksPath = ${HOOKS}).
+Each teammate runs \`npx eqc-kit hooks\` once per clone. Disable with \`npx eqc-kit hooks --off\`.`);
 }
 
 // ---------- doctor ----------
@@ -354,7 +391,7 @@ function doctor(root) {
   const mf = readJson(path.join(root, '.eqc/manifest.json'));
   if (!mf) out('✖', '.eqc/manifest.json missing or invalid');
   else {
-    const c = cfg?.adapters ? generate(cfg) : [];
+    const c = cfg?.adapters ? generate(cfg, root) : [];
     const byRel = new Map(c.map(e => [e.rel, e]));
     let missing = 0;
     const modified = [];
@@ -374,7 +411,7 @@ function doctor(root) {
 export async function main(argv) {
   const { values: v, positionals: [cmd] } = parseArgs({
     args: argv, allowPositionals: true,
-    options: { yes: { type: 'boolean', short: 'y' }, config: { type: 'string' }, force: { type: 'boolean' }, purge: { type: 'boolean' }, cwd: { type: 'string' },
+    options: { yes: { type: 'boolean', short: 'y' }, config: { type: 'string' }, force: { type: 'boolean' }, purge: { type: 'boolean' }, off: { type: 'boolean' }, cwd: { type: 'string' },
       help: { type: 'boolean', short: 'h' }, version: { type: 'boolean', short: 'v' } },
   });
   if (v.version) return console.log(VERSION);
@@ -385,6 +422,7 @@ export async function main(argv) {
     case 'update': return update(root, v);
     case 'uninstall': return uninstall(root, v);
     case 'doctor': return doctor(root);
+    case 'hooks': return hooks(root, v);
     default: die(`unknown command: ${cmd}\n${USAGE}`);
   }
 }

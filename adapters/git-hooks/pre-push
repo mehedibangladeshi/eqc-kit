@@ -1,0 +1,12 @@
+#!/bin/sh
+# eqc-kit:managed v1 — regenerate with npx eqc-kit update
+# Blocks the push when a passing Rule's verify command fails, or a protected Rule in
+# .eqc/baseline.json no longer passes. Exit 2 = not indexed yet: allow.
+node .eqc/bin/eqc.mjs verify
+s=$?
+[ "$s" -eq 2 ] && exit 0
+[ "$s" -ne 0 ] && exit "$s"
+node .eqc/bin/eqc.mjs guard
+s=$?
+[ "$s" -eq 2 ] && exit 0
+exit "$s"

@@ -11,6 +11,7 @@ Commit:
 | `.eqc/` (everything except `tmp/`) | The Engine, Prompts, config, Index, Verdicts, Milestones and Plans. Teammates then run the same Engine version and see the same results. |
 | `AGENTS.md` | The block tells non-Claude agents how to run `eqc check` and `eqc fix`. |
 | `.claude/skills/eqc-*` and `.claude/agents/eqc-*` | The Claude Code adapter files. |
+| `CLAUDE.md` (if eqc-kit wrote its block there) | Tells Claude Code to follow the Rules while writing code. |
 | The report, for example `docs/eqc/COMPLIANCE.md` | The readable result. |
 
 Do not commit `.eqc/tmp/`. `init` writes `.eqc/.gitignore` containing `tmp/`, so a plain `git add .eqc` is safe. Scratch files there are audit output waiting to be merged.
@@ -49,18 +50,29 @@ Things worth checking in review:
 
 ## Running in a pipeline
 
-The installer works without prompts: `npx eqc-kit init --yes --config answers.json`, see [configuration.md](configuration.md#non-interactive-setup). `npx eqc-kit doctor` exits 1 when the install is broken, so it can gate a job cheaply. The audit itself needs an agent, so it is not run in CI by eqc-kit.
+The installer works without prompts: `npx eqc-kit init --yes --config answers.json`, see [configuration.md](configuration.md#non-interactive-setup). `npx eqc-kit doctor` exits 1 when the install is broken, so it can gate a job cheaply. The audit itself needs an agent, so it is not run in CI by eqc-kit. Two Engine commands are cheap and deterministic, and do belong in CI. They are the build-time guard that `--no-verify` cannot skip:
 
-## Guard in CI
+## Verify and guard in CI
 
-`node .eqc/bin/eqc.mjs guard` compares the committed `.eqc/compliance.json` with `.eqc/baseline.json`. It exits 1, failing the job, when a protected Rule is now `fail`, `partial` or unaudited, or when the level has dropped below the baseline. It runs no agent, so it is cheap to run on every PR:
+Two Engine commands run without an agent, so they are cheap on every PR:
+
+- `verify` re-runs the Verify commands of passing Rules against the code in the PR. It catches code that breaks a mechanically checkable Rule even when nobody re-audited.
+- `guard` compares the committed `.eqc/compliance.json` with `.eqc/baseline.json`. It exits 1 when a protected Rule is now `fail`, `partial` or unaudited, or when the level dropped below the baseline. `guard --min TIER` also fails below a Tier you require.
+
+GitHub Actions example:
 
 ```yaml
-# .github/workflows/ci.yml, after checkout and Node setup
-- name: EQC guard
-  run: node .eqc/bin/eqc.mjs guard
+eqc:
+  runs-on: ubuntu-latest
+  steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-node@v4
+      with: { node-version: 20 }
+    # install your project's dependencies here if your verify commands need them (e.g. npm ci for npm run lint)
+    - run: node .eqc/bin/eqc.mjs verify
+    - run: node .eqc/bin/eqc.mjs guard --min BRONZE
 ```
 
-Before the first merge there is no `baseline.json`, and `guard` passes with `guard: no baseline yet`.
+Both exit 2 when the Standard is not indexed yet; treat that as a pass or index first. Before the first merge there is no `baseline.json`, and `guard` passes with `guard: no baseline yet`.
 
-`guard` reads recorded Verdicts only; it does not audit. So a PR that touches Rules must include a re-audit of them: run `eqc check <IDs>` (or `eqc check recheck`) in your agent, merge, and commit the updated `.eqc/compliance.json`, `.eqc/baseline.json` and report. Otherwise CI checks stale results. Details are in [engine-commands.md](engine-commands.md#guard).
+`guard` reads recorded Verdicts only; it does not audit. So a PR that touches Rules must include a re-audit of them: run `eqc check <IDs>` (or `eqc check recheck`) in your agent, merge, and commit the updated `.eqc/compliance.json`, `.eqc/baseline.json` and report. Otherwise CI checks stale results. Details are in [engine-commands.md](engine-commands.md#guard). For local hooks see [commands.md](commands.md#hooks).

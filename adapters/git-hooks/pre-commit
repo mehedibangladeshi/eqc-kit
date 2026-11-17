@@ -1,0 +1,7 @@
+#!/bin/sh
+# eqc-kit:managed v1 — regenerate with npx eqc-kit update
+# Blocks the commit when a passing Rule's verify command fails. Exit 2 = not indexed yet: allow.
+node .eqc/bin/eqc.mjs verify
+s=$?
+[ "$s" -eq 2 ] && exit 0
+exit "$s"

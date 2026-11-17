@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import {
   buildTierSummary, computeCurrentTier, rankCandidates, selectIds, groupByTier,
-  parsePlanChunks, formatChunkStatus, checkIds, updateBaseline, findRegressions,
+  parsePlanChunks, formatChunkStatus, checkIds, buildDigest, updateBaseline, findRegressions,
 } from '../engine/eqc.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -384,6 +384,60 @@ test('state dir defaults to parent of script dir', () => {
   const env = { ...process.env }; delete env.EQC_DIR;
   const r = spawnSync('node', [path.join(root, '.eqc', 'bin', 'eqc.mjs'), 'config', 'get', 'report_path'], { env, encoding: 'utf8' });
   assert.equal(r.stdout, 'docs/eqc-report.md\n');
+});
+
+// ---------- guardrails: digest, verify ----------
+
+// Example fixture with verify commands on two Rules; returns sandbox after a merge.
+function guarded(results, verify = { 'SILVER-3': 'exit 1', 'BRONZE-2': 'true' }) {
+  const sb = sandbox('example');
+  const doc = sb.readJson('rules.json');
+  for (const r of doc.rules) if (verify[r.id]) r.verify = verify[r.id];
+  fs.writeFileSync(path.join(sb.dir, 'rules.json'), JSON.stringify(doc));
+  assert.equal(sb.run('merge', sb.writeTmp('m.json', results)).status, 0);
+  return sb;
+}
+
+test('merge writes .eqc/RULES.md digest with status and verify command', () => {
+  const sb = guarded([{ id: 'BRONZE-2', status: 'pass', evidence: 'x' }]);
+  const md = fs.readFileSync(path.join(sb.dir, 'RULES.md'), 'utf8');
+  assert.match(md, /## Bronze/);
+  assert.match(md, /- \*\*BRONZE-2\*\* \[pass\] Linter enforced — .*\(verify: `true`\)/);
+  assert.match(md, /- \*\*GOLD-1\*\* \[unaudited\] Release automation/);
+  assert.equal(buildDigest(loadRules('example'), { results: [] }).includes('[unaudited]'), true);
+});
+
+test('verify: runs only passing Rules with a command; exit 1 on failure; ID filter', () => {
+  let sb = guarded([{ id: 'BRONZE-2', status: 'pass' }, { id: 'SILVER-3', status: 'fail' }]);
+  let r = sb.run('verify');
+  assert.equal(r.status, 0, r.stdout);
+  assert.match(r.stdout, /ok   BRONZE-2/);
+  assert.doesNotMatch(r.stdout, /SILVER-3/);
+  sb = guarded([{ id: 'BRONZE-2', status: 'pass' }, { id: 'SILVER-3', status: 'pass' }], { 'SILVER-3': 'echo found console.log; exit 1', 'BRONZE-2': 'true' });
+  r = sb.run('verify');
+  assert.equal(r.status, 1);
+  assert.match(r.stdout, /FAIL SILVER-3[\s\S]*found console\.log[\s\S]*verify: 1 of 2 failed/);
+  assert.equal(sb.run('verify', 'BRONZE-2').status, 0);
+  assert.match(sandbox('example').run('verify').stdout, /no passing rules with a verify command/);
+  assert.equal(sandbox().run('verify').status, 2);
+});
+
+test('verify runs commands from the repo root', () => {
+  const sb = guarded([{ id: 'BRONZE-2', status: 'pass' }], { 'BRONZE-2': 'test -d .eqc' });
+  assert.equal(sb.run('verify').status, 0);
+});
+
+test('guard --min: fails below the tier, rejects unknown or missing tier', () => {
+  const sb = guarded([{ id: 'BRONZE-2', status: 'pass' }]);
+  let r = sb.run('guard', '--min', 'BRONZE');
+  assert.equal(r.status, 1);
+  assert.match(r.stdout, /guard: level NONE is below --min BRONZE/);
+  assert.match(sb.run('guard', '--min', 'PLATINUM').stdout, /unknown tier "PLATINUM"/);
+  assert.equal(sb.run('guard', '--min').status, 1);
+  const bronze = loadRules('example').rules.filter(x => x.tier === 'BRONZE').map(x => ({ id: x.id, status: 'pass' }));
+  sb.run('merge', sb.writeTmp('b.json', bronze));
+  assert.equal(sb.run('guard', '--min', 'BRONZE').status, 0);
+  assert.equal(sb.run('guard', '--min', 'SILVER').status, 1);
 });
 
 // ---------- baseline / guard ----------

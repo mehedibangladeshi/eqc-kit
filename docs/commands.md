@@ -5,7 +5,7 @@ The Installer is `npx eqc-kit`. It sets up `.eqc/`, writes the adapter files, an
 ```
 $ npx eqc-kit --help
 eqc-kit 0.1.0
-usage: eqc-kit <init|update|uninstall|doctor> [--yes] [--config file.json] [--force] [--purge] [--cwd dir]
+usage: eqc-kit <init|update|uninstall|doctor|hooks> [--yes] [--config file.json] [--force] [--purge] [--off] [--cwd dir]
 ```
 
 Run it from the repo root, or pass `--cwd`.
@@ -16,8 +16,9 @@ Run it from the repo root, or pass `--cwd`.
 |---|---|---|---|
 | `--yes` | `-y` | init, update, uninstall | Accept defaults and never prompt. On conflicts, keep your file. |
 | `--config <file>` | | init | Read answers from a JSON file. See [configuration.md](configuration.md#non-interactive-setup). |
-| `--force` | | init, update, uninstall | `init`: install outside a git repo, and overwrite existing files that eqc-kit did not write. `update`: overwrite Managed files you edited, without asking. `uninstall`: remove Managed files you edited. |
+| `--force` | | init, update, uninstall | `init`: install outside a git repo, and overwrite existing files that eqc-kit did not write. `update`: overwrite Managed files you edited, without asking. `uninstall`: remove Managed files you edited. `hooks`: enable even when other git hooks exist. |
 | `--purge` | | uninstall | Also delete `.eqc/` entirely, state included. |
+| `--off` | | hooks | Disable the eqc-kit git hooks. |
 | `--cwd <dir>` | | all | Act on this directory instead of the current one. |
 | `--help` | `-h` | | Print usage. |
 | `--version` | `-v` | | Print the version. |
@@ -53,7 +54,7 @@ What it does:
 3. Copies the Standard to `.eqc/standard/`, writes `.eqc/config.json`, `.eqc/.gitignore` (`tmp/`) and the vendored Engine and Prompts.
 4. Writes the adapter files you chose, then `.eqc/manifest.json` with a hash of every Managed file.
 
-With the `claude-code` adapter, `init` also writes a managed block into `CLAUDE.md` between `<!-- eqc-kit:start -->` and `<!-- eqc-kit:end -->`, titled "EQC compliance guard". It sets the rules for development work: re-audit affected protected Rules, run `node .eqc/bin/eqc.mjs guard`, and never finish with a regression. The `AGENTS.md` block carries the same guard rules, so other agents follow them too. See [concepts.md](concepts.md#baseline-and-guard).
+With the `claude-code` adapter and an existing `CLAUDE.md` (or with `agents-md` off), `init` also writes a managed block into `CLAUDE.md` between `<!-- eqc-kit:start -->` and `<!-- eqc-kit:end -->`, titled "EQC compliance guard". It sets the rules for development work: read `.eqc/RULES.md`, run `node .eqc/bin/eqc.mjs verify`, re-audit affected protected Rules, run `node .eqc/bin/eqc.mjs guard`, and never finish with a regression. The `AGENTS.md` block carries the same guard rules, so other agents follow them too. See [concepts.md](concepts.md#baseline-and-guard).
 
 Defaults under `--yes`: Standard `example`, detected tags, CI paths and package managers, every Gate `true` except `auto_commit`, report at `docs/eqc/COMPLIANCE.md`, no cheaper model. The default adapters are `claude-code` if `.claude/` or `CLAUDE.md` exists plus `agents-md` if `AGENTS.md` exists; if none of those exist, both.
 
@@ -133,10 +134,10 @@ Answering `n` prints `aborted.` and exits 0.
 
 | Removed | Kept (default) | Removed with `--purge` |
 |---|---|---|
-| `.eqc/bin/`, `.eqc/prompts/`, `.eqc/manifest.json` | `.eqc/config.json`, `.eqc/standard/`, `rules.json`, `compliance.json`, `milestones.json`, `plans/` | all of `.eqc/` |
+| `.eqc/bin/`, `.eqc/prompts/`, `.eqc/hooks/`, `.eqc/manifest.json` | `.eqc/config.json`, `.eqc/standard/`, `rules.json`, `compliance.json`, `milestones.json`, `plans/` | all of `.eqc/` |
 | The `.claude/skills/eqc-*` and `.claude/agents/eqc-*` files | The report file (for example `docs/eqc/COMPLIANCE.md`) | |
-| The eqc-kit block in `AGENTS.md`; the file itself only if nothing else is left in it | | |
-| The eqc-kit guard block in `CLAUDE.md` (only the block; the rest of the file is kept) | | |
+| The eqc-kit block in `AGENTS.md` and `CLAUDE.md`; each file only if nothing else is left in it | | |
+| `core.hooksPath`, if it points at `.eqc/hooks` | | |
 
 ```
 $ npx eqc-kit uninstall --yes
@@ -154,6 +155,35 @@ uninstalled; .eqc/ state kept (use --purge to remove).
 ```
 
 Files eqc-kit never wrote (for example a skill it skipped at init) are left alone. Afterwards `.claude/skills/`, `.claude/agents/` and `.claude/` are removed if they are empty; non-empty ones stay. With no `.eqc/` present, it prints `error: nothing to uninstall: no .eqc/ found.` and exits 1.
+
+## `hooks`
+
+Turns on the git hooks that block a commit or push when code breaks a passing Rule. `init` and `update` always write the hook scripts to `.eqc/hooks/`; this command points git at them with `git config core.hooksPath .eqc/hooks`. Git config is not committed, so each teammate runs it once per clone (eqc-kit never runs on install, see [ADR 0001](adr/0001-no-postinstall.md)).
+
+| Hook | Runs | Blocks when |
+|---|---|---|
+| `pre-commit` | `eqc.mjs verify` | A passing Rule's `verify` command fails |
+| `pre-push` | `eqc.mjs verify`, then `eqc.mjs guard` | The same, or a protected Rule in `.eqc/baseline.json` regressed in the recorded Verdicts |
+
+Both allow everything until the Standard is indexed. `git commit --no-verify` skips them, so also run them in CI (see [ci.md](ci.md#verify-and-guard-in-ci)).
+
+```
+$ npx eqc-kit hooks
+hooks: on — pre-commit runs verify, pre-push runs verify + gate (core.hooksPath = .eqc/hooks).
+Each teammate runs `npx eqc-kit hooks` once per clone. Disable with `npx eqc-kit hooks --off`.
+```
+
+It never bypasses an existing setup. If `core.hooksPath` is already set (Husky, Lefthook) or `.git/hooks/` has hooks of its own, it exits 1 and prints the lines to add to your hooks instead:
+
+```
+$ npx eqc-kit hooks
+error: core.hooksPath is already ".husky"; enabling would bypass them.
+Add these lines to your pre-commit and pre-push hooks instead (or rerun with --force):
+  sh .eqc/hooks/pre-commit
+  sh .eqc/hooks/pre-push
+```
+
+`--force` enables them anyway, which turns your `.git/hooks/` off. `--off` unsets `core.hooksPath` if it points at `.eqc/hooks`, and does nothing otherwise. `uninstall` unsets it too.
 
 ## `doctor`
 

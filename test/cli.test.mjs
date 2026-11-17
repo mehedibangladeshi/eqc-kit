@@ -323,6 +323,96 @@ test('doctor: missing managed file is an error', () => {
   assert.match(res.stdout, /✖ managed file missing: .eqc\/prompts\/fix.md/);
 });
 
+// ---------- guardrails: CLAUDE.md block, git hooks ----------
+
+const gitRepo = (files = {}) => { const r = repo(files, { git: false }); spawnSync('git', ['init', '-q'], { cwd: r }); return r; };
+const gitCfg = (r, k) => spawnSync('git', ['config', '--get', k], { cwd: r, encoding: 'utf8' }).stdout.trim();
+
+test('guardrail block: in AGENTS.md always; in CLAUDE.md only when it exists or agents-md is off', () => {
+  let r = repo();
+  cli(r, ['init', '--yes']);
+  assert.match(rd(r, 'AGENTS.md'), /\.eqc\/RULES\.md[\s\S]*eqc\.mjs verify[\s\S]*eqc\.mjs guard/);
+  assert.ok(!ex(r, 'CLAUDE.md'), 'must not create CLAUDE.md: it would hide AGENTS.md from Claude Code');
+
+  r = repo({ 'CLAUDE.md': '# Mine\n' });
+  cli(r, ['init', '--yes']);
+  assert.match(rd(r, 'CLAUDE.md'), /^# Mine\n\n<!-- eqc-kit:start -->[\s\S]*RULES\.md[\s\S]*eqc-kit:end -->\n$/);
+  assert.ok(JSON.parse(rd(r, '.eqc/manifest.json')).files['CLAUDE.md#eqc-kit']);
+  cli(r, ['uninstall', '--yes']);
+  assert.equal(rd(r, 'CLAUDE.md'), '# Mine\n');
+
+  r = repo();
+  cli(r, ['init', '--yes', '--config', writeCfg(r, { adapters: ['claude-code'] })]);
+  assert.match(rd(r, 'CLAUDE.md'), /eqc-kit:start/);
+  assert.ok(!ex(r, 'AGENTS.md'));
+});
+
+test('init writes executable git hooks; hooks on/off sets core.hooksPath; uninstall unsets it', () => {
+  const r = gitRepo();
+  assert.equal(cli(r, ['init', '--yes']).status, 0);
+  for (const h of ['pre-commit', 'pre-push']) {
+    assert.ok(fs.statSync(path.join(r, '.eqc/hooks', h)).mode & 0o100, `${h} executable`);
+    assert.match(rd(r, `.eqc/hooks/${h}`), /^#!\/bin\/sh\n# eqc-kit:managed/);
+  }
+  assert.equal(gitCfg(r, 'core.hooksPath'), '');
+  let res = cli(r, ['hooks']);
+  assert.equal(res.status, 0, res.stderr);
+  assert.equal(gitCfg(r, 'core.hooksPath'), '.eqc/hooks');
+  assert.match(cli(r, ['hooks']).stdout, /already on/);
+  assert.equal(cli(r, ['hooks', '--off']).status, 0);
+  assert.equal(gitCfg(r, 'core.hooksPath'), '');
+  cli(r, ['hooks']);
+  cli(r, ['uninstall', '--yes']);
+  assert.equal(gitCfg(r, 'core.hooksPath'), '');
+  assert.ok(!ex(r, '.eqc/hooks'));
+});
+
+test('hooks refuses to bypass another hook manager or existing hooks unless --force', () => {
+  let r = gitRepo();
+  cli(r, ['init', '--yes']);
+  spawnSync('git', ['config', 'core.hooksPath', '.husky'], { cwd: r });
+  let res = cli(r, ['hooks']);
+  assert.equal(res.status, 1);
+  assert.match(res.stderr, /already "\.husky"[\s\S]*sh \.eqc\/hooks\/pre-commit/);
+  assert.equal(gitCfg(r, 'core.hooksPath'), '.husky');
+  assert.match(cli(r, ['hooks', '--off']).stdout, /not enabled/);
+  assert.equal(gitCfg(r, 'core.hooksPath'), '.husky');
+
+  r = gitRepo();
+  cli(r, ['init', '--yes']);
+  fs.writeFileSync(path.join(r, '.git/hooks/pre-commit'), '#!/bin/sh\n');
+  assert.match(cli(r, ['hooks']).stderr, /existing git hooks found \(pre-commit\)/);
+  assert.equal(cli(r, ['hooks', '--force']).status, 0);
+  assert.equal(gitCfg(r, 'core.hooksPath'), '.eqc/hooks');
+});
+
+test('pre-commit hook: allows before indexing, blocks when a passing Rule fails verify', () => {
+  const r = gitRepo();
+  cli(r, ['init', '--yes']);
+  const hook = () => spawnSync('sh', ['.eqc/hooks/pre-commit'], { cwd: r, encoding: 'utf8' });
+  assert.equal(hook().status, 0, 'not indexed yet: allow');
+  fs.writeFileSync(path.join(r, '.eqc/rules.json'), JSON.stringify({ schema: 1, standard: {}, tiers: [{ id: 'A', name: 'A', order: 1 }],
+    rules: [{ id: 'A-1', tier: 'A', order: 1, title: 'No debug prints', verify: '! grep -rq "console.log" src' }] }));
+  fs.writeFileSync(path.join(r, 'm.json'), JSON.stringify([{ id: 'A-1', status: 'pass' }]));
+  spawnSync('node', ['.eqc/bin/eqc.mjs', 'merge', 'm.json'], { cwd: r });
+  fs.mkdirSync(path.join(r, 'src'));
+  fs.writeFileSync(path.join(r, 'src/a.js'), 'export const a = 1;\n');
+  assert.equal(hook().status, 0);
+  fs.writeFileSync(path.join(r, 'src/a.js'), 'console.log(1);\n');
+  const res = hook();
+  assert.equal(res.status, 1);
+  assert.match(res.stdout, /FAIL A-1 — No debug prints/);
+  const push = () => spawnSync('sh', ['.eqc/hooks/pre-push'], { cwd: r, encoding: 'utf8' });
+  fs.writeFileSync(path.join(r, 'src/a.js'), 'export const a = 1;\n');
+  assert.equal(push().status, 0);
+  fs.writeFileSync(path.join(r, 'm.json'), JSON.stringify([{ id: 'A-1', status: 'fail' }]));
+  spawnSync('node', ['.eqc/bin/eqc.mjs', 'merge', 'm.json'], { cwd: r });
+  assert.equal(hook().status, 0, 'a known fail never blocks a commit');
+  const p = push();
+  assert.equal(p.status, 1, 'but a protected Rule that regressed blocks the push');
+  assert.match(p.stdout, /guard: REGRESSION[\s\S]*A-1/);
+});
+
 test('claude-code: CLAUDE.md guard block written, user text kept, uninstall strips only block, doctor ok', () => {
   const r = repo({ 'CLAUDE.md': '# Mine\n\nkeep\n' });
   assert.equal(cli(r, ['init', '--yes', '--config', writeCfg(r, { adapters: ['claude-code'] })]).status, 0);
