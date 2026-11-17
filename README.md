@@ -58,6 +58,7 @@ AGENTS.md            a marked block, appended to your file if you have one
 CLAUDE.md            the guard block, only if you already have a CLAUDE.md (Claude Code)
 .claude/             Claude Code adapter only: skills/ and agents/
 docs/eqc/COMPLIANCE.md   the report (path is configurable)
+docs/eqc/COMPLIANCE.html  the same report as a single HTML page
 ```
 
 ## Safety

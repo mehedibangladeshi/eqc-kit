@@ -82,7 +82,7 @@ Changes take effect immediately, with no `update` needed.
 
 ### report_path
 
-Where `merge` writes the Markdown report, relative to the repo root. The path is also written into the adapter files, so after changing it run `npx eqc-kit update`. The old report file is not moved.
+Where `merge` writes the Markdown report, relative to the repo root. The HTML report is written beside it, with `.html` instead of `.md`. The path is also written into the adapter files, so after changing it run `npx eqc-kit update`. The old report file is not moved.
 
 ### cheap_model
 
