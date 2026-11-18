@@ -1,6 +1,6 @@
 # Claude Code
 
-Claude Code gets the native adapter: two skills you type as slash commands, four subagents they dispatch, and a managed guard block in `CLAUDE.md` (when one exists). Other agents use `AGENTS.md` instead; see the [README](../../README.md#supported-agents). You can install both.
+Claude Code gets the native adapter: three skills you type as slash commands, four subagents they dispatch, and a managed guard block in `CLAUDE.md` (when one exists). Other agents use `AGENTS.md` instead; see the [README](../../README.md#supported-agents). You can install both.
 
 Select the `claude-code` adapter at `npx eqc-kit init` (it is the default when `.claude/` or `CLAUDE.md` exists, or when nothing else exists).
 
@@ -11,6 +11,7 @@ Select the `claude-code` adapter at `npx eqc-kit init` (it is the default when `
   skills/
     eqc-check/SKILL.md
     eqc-fix/SKILL.md
+    eqc-help/SKILL.md
   agents/
     eqc-index.md
     eqc-audit.md
@@ -19,7 +20,7 @@ Select the `claude-code` adapter at `npx eqc-kit init` (it is the default when `
 CLAUDE.md          eqc-kit guard block (only if CLAUDE.md exists, or agents-md is off)
 ```
 
-- **Skills are the entry points.** `/eqc-check` and `/eqc-fix` are thin wrappers. Each says "follow `.eqc/prompts/check.md` (or `fix.md`) exactly" and adds Claude Code specifics: dispatch subagents, use AskUserQuestion for choices, put temp files in the session scratchpad.
+- **Skills are the entry points.** `/eqc-check`, `/eqc-fix` and `/eqc-help` are thin wrappers. Each says "follow `.eqc/prompts/check.md` (or `fix.md`) exactly" and adds Claude Code specifics: dispatch subagents, use AskUserQuestion for choices, put temp files in the session scratchpad.
 - **Agents are the sub-tasks.** Each subagent is another thin wrapper that follows one Prompt: `eqc-index` (`index.md`), `eqc-audit` (`audit.md`), `eqc-planner` (`plan.md`), `eqc-fixer` (`fixer.md`). Their tool lists are limited to what the job needs; only the fixer can edit existing files (the indexer and planner can only write their own output).
 - **Parallel per Tier.** `/eqc-check` dispatches one `eqc-audit` per Tier in a single message, so Tiers are audited at the same time. Fixes are the opposite: one Rule at a time, never two fixers at once.
 - **CLAUDE.md guard block.** A managed block between `<!-- eqc-kit:start -->` and `<!-- eqc-kit:end -->`, titled "EQC compliance guard". For any development work (features, fixes, config or dependency changes, refactors, file moves), it tells Claude to read `.eqc/RULES.md` before writing code, run `node .eqc/bin/eqc.mjs verify`, re-audit affected protected Rules, run `node .eqc/bin/eqc.mjs guard`, never finish with a regression, never edit `.eqc/baseline.json` or weaken lint, test, CI or type-check settings, and ask you before a protected Rule must change. `uninstall` removes only this block.
@@ -52,6 +53,17 @@ Also an agent conversation, described from [fix.md](../../prompts/fix.md):
 | `/eqc-fix logging` | Filters the list to Rules mentioning that word. |
 
 Per Rule: Gates first (it asks if the fix touches CI, packages, architecture, or the top Tier), then a single fixer pass for small fixes, or a Plan you approve and Chunks run one at a time for medium and large ones. After each it re-audits, merges the Verdict and tells you before and after, then runs `guard` and shows any regression as `ID — title — now fail|partial|not audited`. Changes are left uncommitted unless `gates.auto_commit` is true. See [getting-started.md](../getting-started.md#4-fix).
+
+## /eqc-help
+
+Also an agent conversation, described from [help.md](../../prompts/help.md). The skill is in `.claude/skills/eqc-help/SKILL.md`:
+
+| You type | What happens |
+|---|---|
+| `/eqc-help` | Runs `npx eqc-kit doctor`, reads your current Compliance level and next fix from the Engine, and explains the check → fix loop with one suggested next command. |
+| `/eqc-help why is SILVER-2 failing?` | Same check, then answers your question. |
+
+It is read-only. It never runs `init`, `update`, `fix` or another writing command; it tells you the command to run instead. See [commands.md](../commands.md#help).
 
 ## Cheaper model for mechanical work
 

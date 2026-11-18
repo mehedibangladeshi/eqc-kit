@@ -27,11 +27,21 @@ More in [docs/concepts.md](docs/concepts.md).
 
 Full walkthrough with real output: [docs/getting-started.md](docs/getting-started.md).
 
+## Getting help
+
+- `npx eqc-kit help` prints a quick start and every installer command. It works before anything is installed.
+- In your agent, `/eqc-help` (Claude Code) or `eqc help` reads your current Compliance level and next fix, then answers. It never changes files.
+- Before install, paste this into any agent:
+
+```
+Run `npx eqc-kit help` and help me install eqc-kit in this repo
+```
+
 ## Supported agents
 
 | Agent | How it is wired | Guide |
 |---|---|---|
-| Claude Code | Native skills (`/eqc-check`, `/eqc-fix`) and subagents that run in parallel | [docs/agents/claude-code.md](docs/agents/claude-code.md) |
+| Claude Code | Native skills (`/eqc-check`, `/eqc-fix`, `/eqc-help`) and subagents that run in parallel | [docs/agents/claude-code.md](docs/agents/claude-code.md) |
 | Codex | `AGENTS.md` | [docs/agents/codex.md](docs/agents/codex.md) |
 | Cursor | `AGENTS.md` | [docs/agents/cursor.md](docs/agents/cursor.md) |
 | GitHub Copilot | `AGENTS.md` | [docs/agents/copilot.md](docs/agents/copilot.md) |
@@ -43,7 +53,7 @@ Full walkthrough with real output: [docs/getting-started.md](docs/getting-starte
 ```
 .eqc/
   bin/eqc.mjs        the Engine
-  prompts/           the Prompts the agent follows
+  prompts/           the Prompts the agent follows (including help.md)
   hooks/             pre-commit and pre-push (enable with npx eqc-kit hooks)
   standard/          your copy of the Standard
   config.json        stack tags, Gates, report path
@@ -56,7 +66,7 @@ Full walkthrough with real output: [docs/getting-started.md](docs/getting-starte
   plans/             chunked fix Plans (medium and large fixes)
 AGENTS.md            a marked block, appended to your file if you have one
 CLAUDE.md            the guard block, only if you already have a CLAUDE.md (Claude Code)
-.claude/             Claude Code adapter only: skills/ and agents/
+.claude/             Claude Code adapter only: skills/ (eqc-check, eqc-fix, eqc-help) and agents/
 docs/eqc/COMPLIANCE.md   the report (path is configurable)
 docs/eqc/COMPLIANCE.html  the same report as a single HTML page
 ```
@@ -81,7 +91,7 @@ Any Markdown document with tier headings and numbered Rules works. See [docs/wri
 |---|---|
 | [Getting started](docs/getting-started.md) | First run, start to finish |
 | [Concepts](docs/concepts.md) | Terms and how the Compliance level is computed |
-| [Installer commands](docs/commands.md) | `init`, `update`, `uninstall`, `doctor`, `hooks` and their flags |
+| [Installer commands](docs/commands.md) | `init`, `update`, `uninstall`, `doctor`, `hooks`, `help` and their flags |
 | [Configuration](docs/configuration.md) | Every `.eqc/config.json` key; CI setup with `--config` |
 | [Engine commands](docs/engine-commands.md) | `node .eqc/bin/eqc.mjs ...` |
 | [Writing a Standard](docs/writing-a-standard.md) | Document format and indexing |

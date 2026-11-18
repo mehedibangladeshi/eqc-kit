@@ -3,12 +3,28 @@
 The Installer is `npx eqc-kit`. It sets up `.eqc/`, writes the adapter files, and keeps them current. It never judges code. For the Engine that your agent runs (`node .eqc/bin/eqc.mjs ...`), see [engine-commands.md](engine-commands.md).
 
 ```
-$ npx eqc-kit --help
-eqc-kit 0.1.0
-usage: eqc-kit <init|update|uninstall|doctor|hooks> [--yes] [--config file.json] [--force] [--purge] [--off] [--cwd dir]
+$ npx eqc-kit help
+eqc-kit 0.2.0 — raise your project's compliance with your engineering quality standard
+
+Quick start
+  1. npx eqc-kit init               install into this repo
+  2. /eqc-check  (or "eqc check")   audit against the standard
+  3. /eqc-fix    (or "eqc fix")     fix the easiest gaps
+
+Commands
+  init        install (asks questions; --yes, --config file.json, --force)
+  update      upgrade kit files and migrate .eqc/ state (--yes, --force)
+  doctor      check the install is healthy
+  hooks       enable git hooks (--off removes them, --force)
+  uninstall   remove kit files (--purge also deletes .eqc/; --yes, --force)
+  help [cmd]  this help, or one command's details
+Global: --cwd dir
+
+In your agent: /eqc-help or "eqc help"
+Docs: https://github.com/mehedibangladeshi/eqc-kit#readme
 ```
 
-Run it from the repo root, or pass `--cwd`.
+Run it from the repo root, or pass `--cwd`. `npx eqc-kit help` prints a quick start and each command; see [help](#help) for per-command help.
 
 ## Flags
 
@@ -20,16 +36,16 @@ Run it from the repo root, or pass `--cwd`.
 | `--purge` | | uninstall | Also delete `.eqc/` entirely, state included. |
 | `--off` | | hooks | Disable the eqc-kit git hooks. |
 | `--cwd <dir>` | | all | Act on this directory instead of the current one. |
-| `--help` | `-h` | | Print usage. |
+| `--help` | `-h` | | Print the help (same as `help`). |
 | `--version` | `-v` | | Print the version. |
 
-Running with no command prints the usage line and exits 0.
+Running with no command prints the help and exits 0.
 
 ## Exit codes
 
 | Code | Meaning |
 |---|---|
-| 0 | Success. Also: usage printed, uninstall declined, or files kept on conflict (a warning is printed). |
+| 0 | Success. Also: help printed, uninstall declined, or files kept on conflict (a warning is printed). |
 | 1 | Error (message on stderr, prefixed `error:`), an unknown command, or `doctor` found a failed check. |
 
 Prompts and summaries go to stdout; warnings and errors to stderr. When stdin is not a terminal, the prompts read answers from piped lines in order, and the question text is still printed.
@@ -85,7 +101,7 @@ Regenerates the Managed files from the installed eqc-kit version and your curren
 
 ```
 $ npx eqc-kit update
-update: 0 written, 0 kept (edited), 14 unchanged
+update: 0 written, 0 kept (edited), 19 unchanged
 ```
 
 It also fills in any config keys that newer versions expect and updates `installed_version`. It does not re-detect your stack: `stack.tags` stays as you left it.
@@ -197,7 +213,7 @@ $ npx eqc-kit doctor
 ✔ config.json valid
 ✔ standard file .eqc/standard/example.md
 ✔ engine selftest passes
-✔ 14 managed files present and unmodified
+✔ 19 managed files present and unmodified
 ✔ standard indexed (rules.json)
 ```
 
@@ -225,3 +241,33 @@ In an empty or broken install:
 ```
 
 When a modified file is listed, the "N managed files present and unmodified" line is not printed.
+
+## `help`
+
+Prints a quick start (`init`, then `eqc check`, then `eqc fix`), every installer command with its key flags, and how to ask your agent for help. It works before anything is installed and writes nothing. `--help`, `-h` and running with no command print the same thing.
+
+```
+$ npx eqc-kit help
+```
+
+`npx eqc-kit help <command>` prints that command's purpose, flags and an example:
+
+```
+$ npx eqc-kit help doctor
+```
+
+An unknown command name prints `error: unknown command: <name>` followed by `run eqc-kit help`, and exits 1:
+
+```
+$ npx eqc-kit help bogus
+error: unknown command: bogus
+run eqc-kit help
+```
+
+### In your agent: `/eqc-help` or `eqc help`
+
+Inside a repo with eqc-kit installed, ask your agent for help: `/eqc-help [question]` in Claude Code, or `eqc help [question]` for AGENTS.md agents. It follows `.eqc/prompts/help.md`:
+
+- It runs `npx eqc-kit doctor` and reads the current Compliance level and next fix from the Engine, then answers your question.
+- With no question, it explains the check → fix loop and suggests one next command.
+- It is read-only. It never runs `init`, `update`, `fix` or any other writing command; it tells you the command to run instead.

@@ -9,6 +9,9 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 - Engine command `migrate` upgrades `.eqc/` state in place. It backs up every `.eqc/*.json` to `.eqc/tmp/backup-schema-<N>/` first and restores that backup if a Migration fails.
 - Migration 1 → 2 builds the Baseline from recorded Verdicts when `baseline.json` is missing (projects started on 0.1).
 - Schema gate: Engine commands other than `selftest` and `check-ids` refuse to run when `state_schema` does not match the Engine, telling you to run `npx eqc-kit update` (older) or upgrade eqc-kit (newer).
+- `npx eqc-kit help` (also `--help`, `-h`, or no command) prints a quick start, every installer command with key flags, and the docs link. `npx eqc-kit help <command>` shows one command's purpose, flags and an example. Works before install; an unknown command exits 1.
+- Agent help: `/eqc-help [question]` (Claude Code) and `eqc help [question]` (AGENTS.md agents) follow `.eqc/prompts/help.md`. They run `doctor`, report your Compliance level and next fix, and answer. Read-only: they name the command to run instead of running a writing one.
+- Install writes `.eqc/prompts/help.md`, and with the `claude-code` adapter `.claude/skills/eqc-help/SKILL.md`. The `init` next-step output mentions help.
 
 ### Changed
 - `npx eqc-kit update` runs `migrate` after syncing the Engine, and exits 1 with the Engine's error if the migration fails.

@@ -16,6 +16,10 @@ These tools were checked against their vendors' own docs. Any tool not listed he
 
 No setup beyond the init step.
 
+## Commands
+- `eqc check` and `eqc fix [ID]`: follow `.eqc/prompts/check.md` and `fix.md`.
+- `eqc help [question]`: follows `.eqc/prompts/help.md`. It reads your level and next fix and answers; it changes nothing.
+
 ## Needs a setting (verified)
 ### Aider
 Aider's docs describe loading convention files with `--read` or `read:`; they do not mention AGENTS.md, so load it explicitly.

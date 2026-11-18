@@ -20,6 +20,7 @@ Gemini CLI loads `GEMINI.md` by default. To read AGENTS.md, set the `context.fil
 | --- | --- |
 | `eqc check` | Gemini follows the check prompt and prints a report |
 | `eqc fix [ID]` | Gemini follows the fix prompt and applies fixes |
+| `eqc help [question]` | Gemini reads your level and next fix, answers, changes nothing |
 
 Run `gemini` from the repo root.
 

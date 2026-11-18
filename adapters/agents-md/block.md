@@ -5,6 +5,7 @@
 | --- | --- |
 | `eqc check [arg]` | `.eqc/prompts/check.md` |
 | `eqc fix [ID\|keyword]` | `.eqc/prompts/fix.md` |
+| `eqc help [question]` | `.eqc/prompts/help.md` |
 
 Read the prompt file and follow it exactly; when it says to run a sub-task, read that prompt file and do it yourself (sequentially) unless your tool supports sub-agents.
 

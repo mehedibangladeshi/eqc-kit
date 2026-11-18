@@ -44,17 +44,18 @@ What each question means:
 Then it prints a summary and writes the files:
 
 ```
-eqc-kit 0.1.0 installed in /path/to/webapp
+eqc-kit 0.2.0 installed in /path/to/webapp
   standard : .eqc/standard/example.md  (source: example)
   stack    : react, nextjs, web, all
   ci       : .github/workflows   package manager: npm
   adapters : claude-code, agents-md   report: docs/eqc/COMPLIANCE.md
-  wrote 14 files: .eqc/{config.json,manifest.json,bin,prompts} + adapter files
+  wrote 19 files: .eqc/{config.json,manifest.json,bin,prompts} + adapter files
 
 Next step:
   Claude Code: run /eqc-check
   Any AGENTS.md tool: ask 'run eqc check'
 The first check indexes the standard.
+Need help? Claude Code: /eqc-help · AGENTS.md tools: ask 'eqc help' · npx eqc-kit help
 ```
 
 To skip the questions (for example in CI), see [configuration.md](configuration.md#non-interactive-setup).
@@ -67,7 +68,7 @@ $ npx eqc-kit doctor
 ✔ config.json valid
 ✔ standard file .eqc/standard/example.md
 ✔ engine selftest passes
-✔ 14 managed files present and unmodified
+✔ 19 managed files present and unmodified
 ⚠ not indexed yet: run eqc check
 ```
 
@@ -160,4 +161,5 @@ Review the diff like any other change, commit it, and run `eqc fix` again.
 - After your team edits the Standard, re-index it: [troubleshooting.md](troubleshooting.md#i-edited-the-standard-how-do-i-re-index).
 - To pick up a newer eqc-kit, run `npx eqc-kit update` ([commands.md](commands.md#update)). It migrates `.eqc/` state to the new format and keeps your Verdicts, Baseline and Milestones; commit the result so teammates get the same Engine and state.
 - To share results and review fixes in pull requests: [ci.md](ci.md).
+- Not sure what to run next? `npx eqc-kit help` lists every command ([commands.md](commands.md#help)). In your agent, `/eqc-help` (Claude Code) or `eqc help` reads your current level and next fix and suggests one command. It never changes files.
 - Something off? [troubleshooting.md](troubleshooting.md).

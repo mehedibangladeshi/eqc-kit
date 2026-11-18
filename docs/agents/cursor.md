@@ -12,6 +12,7 @@ Cursor supports AGENTS.md in the project root as an alternative to `.cursor/rule
 | --- | --- |
 | `eqc check [arg]` | Agent follows the check prompt and audits rules |
 | `eqc fix [ID]` | Agent follows the fix prompt, picks a rule, proposes edits, re-verifies |
+| `eqc help [question]` | Agent reads your level and next fix, answers, changes nothing |
 
 Changes stay in your working tree for review.
 

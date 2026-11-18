@@ -241,7 +241,7 @@ test('URL standard source via local http server', async () => {
 });
 
 test('--help and --version', () => {
-  assert.match(spawnSync('node', [CLI, '--help'], { encoding: 'utf8' }).stdout, /usage: eqc-kit/);
+  assert.match(spawnSync('node', [CLI, '--help'], { encoding: 'utf8' }).stdout, /Quick start/);
   assert.match(spawnSync('node', [CLI, '--version'], { encoding: 'utf8' }).stdout, /^\d+\.\d+\.\d+/);
 });
 
@@ -455,4 +455,31 @@ test('update: failing migrate fails the update', () => {
   const res = cli(r, ['update', '--yes']);
   assert.notEqual(res.status, 0);
   assert.match(res.stderr, /state migration failed/);
+});
+
+test('help, --help and no args print the overview; help <cmd> details; unknown fails', () => {
+  const r = repo({}, { git: false });
+  for (const a of [['help'], ['--help'], ['-h'], []]) {
+    const o = cli(r, a);
+    assert.equal(o.status, 0);
+    for (const s of ['Quick start', '/eqc-help', 'https://github.com/mehedibangladeshi/eqc-kit#readme']) assert.ok(o.stdout.includes(s), `${a} ${s}`);
+  }
+  const i = cli(r, ['help', 'init']);
+  assert.equal(i.status, 0);
+  for (const f of ['--yes', '--config', '--force']) assert.ok(i.stdout.includes(f));
+  const b = cli(r, ['help', 'bogus']);
+  assert.notEqual(b.status, 0);
+  assert.match(b.stderr, /unknown command: bogus/);
+  assert.match(b.stderr, /eqc-kit help/);
+});
+
+test('init installs eqc-help skill + AGENTS row, mentions /eqc-help; uninstall removes skill', () => {
+  const r = repo();
+  const o = cli(r, ['init', '--yes']);
+  assert.equal(o.status, 0);
+  assert.match(o.stdout, /\/eqc-help/);
+  assert.ok(ex(r, '.claude/skills/eqc-help/SKILL.md'));
+  assert.match(rd(r, 'AGENTS.md'), /eqc help/);
+  assert.equal(cli(r, ['uninstall', '--yes']).status, 0);
+  assert.ok(!ex(r, '.claude/skills/eqc-help'));
 });

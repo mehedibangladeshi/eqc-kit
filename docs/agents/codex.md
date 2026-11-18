@@ -12,6 +12,7 @@ Codex reads AGENTS.md natively: it walks from the Git root down to your working 
 | --- | --- |
 | `eqc check` | Codex follows the check prompt, audits rules, prints a report |
 | `eqc fix` | Codex follows the fix prompt, shows a ranked list, applies fixes |
+| `eqc help [question]` | Codex reads your level and next fix, answers, changes nothing |
 
 Changes stay uncommitted unless you commit them.
 

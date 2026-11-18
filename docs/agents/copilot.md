@@ -18,6 +18,7 @@ Copilot reads AGENTS.md as "agent instructions" in several places; the nearest A
 | --- | --- |
 | `eqc check` | Copilot follows the check prompt and reports findings |
 | `eqc fix ID` | Copilot follows the fix prompt and proposes edits |
+| `eqc help [question]` | Copilot reads your level and next fix, answers, changes nothing |
 
 ## What to expect
 - Per GitHub's support table, AGENTS.md is read by Copilot cloud agent, Copilot code review, Copilot Chat in VS Code, and Copilot CLI.

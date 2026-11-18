@@ -12,7 +12,43 @@ import { STATE_SCHEMA } from '../engine/eqc.mjs';
 const PKG = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const VERSION = JSON.parse(fs.readFileSync(path.join(PKG, 'package.json'), 'utf8')).version;
 const USAGE = `eqc-kit ${VERSION}
-usage: eqc-kit <init|update|uninstall|doctor|hooks> [--yes] [--config file.json] [--force] [--purge] [--off] [--cwd dir]`;
+usage: eqc-kit <init|update|uninstall|doctor|hooks|help> [--yes] [--config file.json] [--force] [--purge] [--off] [--cwd dir]`;
+const OVERVIEW = `eqc-kit ${VERSION} — raise your project's compliance with your engineering quality standard
+
+Quick start
+  1. npx eqc-kit init               install into this repo
+  2. /eqc-check  (or "eqc check")   audit against the standard
+  3. /eqc-fix    (or "eqc fix")     fix the easiest gaps
+
+Commands
+  init        install (asks questions; --yes, --config file.json, --force)
+  update      upgrade kit files and migrate .eqc/ state (--yes, --force)
+  doctor      check the install is healthy
+  hooks       enable git hooks (--off removes them, --force)
+  uninstall   remove kit files (--purge also deletes .eqc/; --yes, --force)
+  help [cmd]  this help, or one command's details
+Global: --cwd dir
+
+In your agent: /eqc-help or "eqc help"
+Docs: https://github.com/mehedibangladeshi/eqc-kit#readme`;
+const HELP = {
+  init: ['Install eqc-kit into this repo: detects stack, CI and package manager, asks a few questions, writes .eqc/ and adapter files.',
+    ['--yes, -y           accept detected defaults, no questions', '--config file.json  take answers from a JSON file', '--force             overwrite existing files that differ'], 'npx eqc-kit init --yes'],
+  update: ['Upgrade managed kit files to this version and migrate .eqc/ state. Your config and reports are kept.',
+    ['--yes, -y   no prompts (locally edited files are kept)', '--force      overwrite locally edited managed files'], 'npx eqc-kit@latest update'],
+  doctor: ['Check the install is healthy: engine selftest, managed files present and unmodified, standard indexed.', [], 'npx eqc-kit doctor'],
+  hooks: ['Enable the eqc git hooks (core.hooksPath = .eqc/hooks), or remove them.',
+    ['--off     remove the hooks', '--force   enable even if other git hooks exist'], 'npx eqc-kit hooks --off'],
+  uninstall: ['Remove managed kit files. State in .eqc/ is kept unless --purge.',
+    ['--purge      also delete .eqc/ (state included)', '--yes, -y    no confirmation prompt', '--force      remove files you edited'], 'npx eqc-kit uninstall --purge'],
+  help: ['Show the overview, or one command\'s purpose, flags and an example.', [], 'npx eqc-kit help init'],
+};
+const help = c => {
+  if (!c) return console.log(OVERVIEW);
+  if (!HELP[c]) die(`unknown command: ${c}\nrun eqc-kit help`);
+  const [what, flags, ex] = HELP[c];
+  console.log(`eqc-kit ${c}\n${what}\n${flags.length ? `\nFlags\n${flags.map(f => `  ${f}`).join('\n')}\n` : ''}\nExample\n  ${ex}`);
+};
 const HOOKS = '.eqc/hooks';
 const hostOf = e => (e.rel ?? e).split('#')[0]; // block key 'FILE#name' -> host file; plain rel unchanged
 const START = '<!-- eqc-kit:start -->', END = '<!-- eqc-kit:end -->';
@@ -148,7 +184,7 @@ function generate(cfg, root) {
     const note = cfg.cheap_model
       ? `- Dispatch \`[mechanical]\` chunks with \`model: ${cfg.cheap_model}\` (config \`cheap_model\`, read via \`node .eqc/bin/eqc.mjs config get cheap_model\`); use the session model for \`[judgment]\` chunks and retries.`
       : '- No cheaper model is configured: do not pass a `model` when dispatching; inherit the session model.';
-    for (const s of ['eqc-check', 'eqc-fix'])
+    for (const s of ['eqc-check', 'eqc-fix', 'eqc-help'])
       out.push({ rel: `.claude/skills/${s}/SKILL.md`, content: tpl(`adapters/claude-code/skills/${s}.md`, { ...vars, cheap_model_note: note }) });
     for (const [name, a] of Object.entries(AGENTS))
       out.push({ rel: `.claude/agents/${name}.md`, content: tpl('adapters/claude-code/agent.md', { name, ...a }) });
@@ -275,6 +311,7 @@ async function init(root, opts) {
     if (adapters.includes('claude-code')) console.log('  Claude Code: run /eqc-check');
     if (adapters.includes('agents-md')) console.log("  Any AGENTS.md tool: ask 'run eqc check'");
     console.log('The first check indexes the standard.');
+    console.log(`Need help? ${[adapters.includes('claude-code') && 'Claude Code: /eqc-help', adapters.includes('agents-md') && "AGENTS.md tools: ask 'eqc help'"].filter(Boolean).concat('npx eqc-kit help').join(' · ')}`);
   } finally { io.close(); }
 }
 
@@ -415,13 +452,14 @@ function doctor(root) {
 // ---------- main ----------
 
 export async function main(argv) {
-  const { values: v, positionals: [cmd] } = parseArgs({
+  const { values: v, positionals: [cmd, pos] } = parseArgs({
     args: argv, allowPositionals: true,
     options: { yes: { type: 'boolean', short: 'y' }, config: { type: 'string' }, force: { type: 'boolean' }, purge: { type: 'boolean' }, off: { type: 'boolean' }, cwd: { type: 'string' },
       help: { type: 'boolean', short: 'h' }, version: { type: 'boolean', short: 'v' } },
   });
   if (v.version) return console.log(VERSION);
-  if (v.help || !cmd) return console.log(USAGE);
+  if (cmd === 'help') return help(pos);
+  if (v.help || !cmd) return help();
   const root = path.resolve(v.cwd ?? process.cwd());
   switch (cmd) {
     case 'init': return init(root, v);

@@ -133,12 +133,12 @@ Running it in a repo that has `docs/quality-standard.md`:
 
 ```
 $ npx eqc-kit init --yes --config answers.json
-eqc-kit 0.1.0 installed in /path/to/service
+eqc-kit 0.2.0 installed in /path/to/service
   standard : .eqc/standard/quality-standard.md  (source: docs/quality-standard.md)
   stack    : go, backend, all
   ci       : .github/workflows   package manager: go
   adapters : claude-code, agents-md   report: docs/eqc/COMPLIANCE.md
-  wrote 14 files: .eqc/{config.json,manifest.json,bin,prompts} + adapter files
+  wrote 19 files: .eqc/{config.json,manifest.json,bin,prompts} + adapter files
 
 Next step:
   Claude Code: run /eqc-check
