@@ -293,7 +293,7 @@ test('config get', () => {
   const sb = sandbox('example');
   assert.equal(sb.run('config', 'get', 'report_path').stdout, 'docs/eqc-report.md\n');
   assert.equal(sb.run('config', 'get', 'schema').stdout, '1\n');
-  fs.writeFileSync(path.join(sb.dir, 'config.json'), JSON.stringify({ a: { b: [1, 2], c: 'x' } }));
+  fs.writeFileSync(path.join(sb.dir, 'config.json'), JSON.stringify({ state_schema: 2, a: { b: [1, 2], c: 'x' } }));
   assert.equal(sb.run('config', 'get', 'a').stdout, '{"b":[1,2],"c":"x"}\n');
   assert.equal(sb.run('config', 'get', 'a.b').stdout, '[1,2]\n');
   assert.equal(sb.run('config', 'get', 'a.c').stdout, 'x\n');
@@ -559,4 +559,69 @@ test('html report: regression on a rule with no result uses the unaudited chip c
   const html = buildHtmlReport(rd, { results: [], tier_summary: buildTierSummary(rd.rules, [], rd.tiers), current_tier: 'NONE' }, { level: 'NONE', protected: ['BRONZE-1'] });
   assert.ok(html.includes('<span class="chip unaudited">not audited</span>'));
   assert.ok(!html.includes('class="chip not audited"'));
+});
+
+// ---------- migrate + schema gate ----------
+
+function schema1Sandbox() {
+  const sb = sandbox('example');
+  const cfg = { schema: 1, report_path: 'docs/eqc-report.md' };
+  fs.writeFileSync(path.join(sb.dir, 'config.json'), JSON.stringify(cfg));
+  const id = sb.readJson('rules.json').rules[0].id;
+  fs.writeFileSync(path.join(sb.dir, 'compliance.json'), JSON.stringify({ results: [{ id, status: 'pass' }], current_tier: 'NONE' }));
+  return { sb, cfg, id };
+}
+
+test('migrate: backfills baseline from compliance', () => {
+  const { sb, cfg, id } = schema1Sandbox();
+  const r = sb.run('migrate');
+  assert.equal(r.status, 0, r.stdout);
+  assert.ok(sb.readJson('baseline.json').protected.includes(id));
+  assert.deepEqual(sb.readJson('config.json'), { ...cfg, state_schema: 2 });
+  assert.ok(fs.existsSync(path.join(sb.dir, 'tmp', 'backup-schema-1', 'config.json')));
+});
+
+test('migrate: leaves existing baseline untouched', () => {
+  const { sb } = schema1Sandbox();
+  const b = { level: 'X', protected: ['KEEP'] };
+  fs.writeFileSync(path.join(sb.dir, 'baseline.json'), JSON.stringify(b));
+  assert.equal(sb.run('migrate').status, 0);
+  assert.deepEqual(sb.readJson('baseline.json'), b);
+});
+
+test('migrate: second run is up to date', () => {
+  const { sb } = schema1Sandbox();
+  sb.run('migrate');
+  const r = sb.run('migrate');
+  assert.equal(r.status, 0);
+  assert.match(r.stdout, /up to date/);
+});
+
+test('migrate: failure restores state', () => {
+  const { sb } = schema1Sandbox();
+  fs.writeFileSync(path.join(sb.dir, 'compliance.json'), '{bad');
+  const r = sb.run('migrate');
+  assert.notEqual(r.status, 0);
+  assert.match(r.stdout + r.stderr, /state restored/);
+  assert.equal(sb.readJson('config.json').state_schema, undefined);
+  assert.equal(fs.existsSync(path.join(sb.dir, 'baseline.json')), false);
+});
+
+test('schema gate: older and newer state refuse commands', () => {
+  const { sb } = schema1Sandbox();
+  const old = sb.run('rank');
+  assert.notEqual(old.status, 0);
+  assert.match(old.stdout + old.stderr, /eqc-kit update/);
+  fs.writeFileSync(path.join(sb.dir, 'config.json'), JSON.stringify({ state_schema: 99 }));
+  const newer = sb.run('rank');
+  assert.notEqual(newer.status, 0);
+  assert.match(newer.stdout + newer.stderr, /upgrade eqc-kit/);
+  assert.notEqual(sb.run('migrate').status, 0);
+});
+
+test('schema gate: selftest runs regardless of schema', () => {
+  const { sb } = schema1Sandbox();
+  assert.equal(sb.run('selftest').status, 0);
+  fs.writeFileSync(path.join(sb.dir, 'config.json'), JSON.stringify({ state_schema: 99 }));
+  assert.equal(sb.run('selftest').status, 0);
 });

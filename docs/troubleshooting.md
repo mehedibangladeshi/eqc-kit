@@ -94,6 +94,39 @@ Run `eqc check` once. `doctor` shows the same state as `⚠ not indexed yet`.
 
 Allow `node .eqc/bin/eqc.mjs` for the project. See [claude-code.md](agents/claude-code.md#permission-prompts).
 
+## `state schema N is older than this engine`
+
+Your `.eqc/` state was written by an older eqc-kit, and the Engine refuses to read it until it is migrated. Nothing is lost; the state is just in the old format.
+
+```
+$ node .eqc/bin/eqc.mjs report
+state schema 1 is older than this engine (2); run `npx eqc-kit update`
+```
+
+Run `npx eqc-kit update`. It syncs the Engine and migrates the state. If you only need the migration, run `node .eqc/bin/eqc.mjs migrate`. See [engine-commands.md](engine-commands.md#migrate).
+
+## `state schema N is newer than this engine`
+
+A teammate upgraded eqc-kit and committed state in a newer format than your copy of the Engine understands. The Engine refuses to run so it does not misread or overwrite that state.
+
+```
+$ node .eqc/bin/eqc.mjs merge verdicts.json
+state schema 3 is newer than this engine (2); upgrade eqc-kit
+```
+
+Upgrade eqc-kit to the version your teammate uses, then pull and rerun. Do not run `migrate` or `update` with an older kit to get past this; that would downgrade the state. Until you upgrade, git hooks that run the Engine will fail too.
+
+## `migration failed, state restored`
+
+`migrate` (or `update`) could not upgrade the state, so it put the old state back:
+
+```
+$ node .eqc/bin/eqc.mjs migrate
+migration 1→2 failed, state restored: Unexpected token } in JSON at position 42
+```
+
+Your state is as it was before the run. The copy taken before the run is in `.eqc/tmp/backup-schema-N/` (here `N` is the schema you started from). Read the error to find the file it names. A corrupt JSON file is the usual cause, so check that file in `.eqc/` against the backup, fix the JSON by hand, and rerun `migrate`.
+
 ## Uninstall
 
 ```

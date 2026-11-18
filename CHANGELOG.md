@@ -4,6 +4,15 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+### Added
+- One State schema for all of `.eqc/`, recorded as `state_schema` in `.eqc/config.json` (missing means 1; current is 2). `init` writes it.
+- Engine command `migrate` upgrades `.eqc/` state in place. It backs up every `.eqc/*.json` to `.eqc/tmp/backup-schema-<N>/` first and restores that backup if a Migration fails.
+- Migration 1 → 2 builds the Baseline from recorded Verdicts when `baseline.json` is missing (projects started on 0.1).
+- Schema gate: Engine commands other than `selftest` and `check-ids` refuse to run when `state_schema` does not match the Engine, telling you to run `npx eqc-kit update` (older) or upgrade eqc-kit (newer).
+
+### Changed
+- `npx eqc-kit update` runs `migrate` after syncing the Engine, and exits 1 with the Engine's error if the migration fails.
+
 ## [0.2.0] - 2026-11-17
 
 ### Added

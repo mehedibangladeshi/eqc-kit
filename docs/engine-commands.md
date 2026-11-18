@@ -48,6 +48,7 @@ $ echo $?
 | `milestone add '<json>'` | Append a Milestone | `milestones.json` |
 | `config get <key>` | Read a value from `config.json` | nothing |
 | `verify [ID,...]` | Run the `verify` command of every passing Rule | nothing |
+| `migrate` | Upgrade the State schema of `.eqc/` to the one this Engine expects | every `.eqc/*.json` (backed up first to `.eqc/tmp/backup-schema-<N>/`), `config.json` |
 
 Running with no or an unknown command prints the usage line and exits 1.
 
@@ -374,6 +375,45 @@ $ echo $?
 ```
 
 The Prompts read `standard.path`, `stack.tags`, `ci_paths`, `cheap_model` and the `gates.*` keys. The test fixture's `config.json` contains only `schema` and `report_path`, so those other keys must be present in a real project's config, or `config get` exits 1 for them.
+
+## State schema gate
+
+The State schema is the integer `state_schema` in `.eqc/config.json`. A missing field means 1. The current version is 2. `installed_version` is the kit version, not the State schema.
+
+Every Engine command that reads state checks it first and refuses to run when it does not match this Engine. `selftest` and `check-ids` skip the check, and so does any command when there is no `config.json`.
+
+```
+$ node .eqc/bin/eqc.mjs report
+state schema 1 is older than this engine (2); run `npx eqc-kit update`
+$ echo $?
+1
+```
+
+A newer schema says `state schema 3 is newer than this engine (2); upgrade eqc-kit`. Git hooks run these commands too, so a teammate on an older kit gets failing hooks until they upgrade.
+
+## `migrate`
+
+Upgrades the state in `.eqc/` to the current State schema. `npx eqc-kit update` runs it after syncing the Engine, so you only need it by hand when `update` could not finish, or when a command told you to.
+
+```
+$ node .eqc/bin/eqc.mjs migrate
+migrated state schema 1 → 2 (backup: .eqc/tmp/backup-schema-1)
+$ node .eqc/bin/eqc.mjs migrate
+state schema 2, up to date
+```
+
+What it does:
+
+- With no `.eqc/config.json`, it prints `no .eqc/config.json; run \`npx eqc-kit init\`` and exits 1.
+- If the state is already current, it prints `state schema N, up to date` and changes nothing.
+- If the state is older, it copies every `.eqc/*.json` to `.eqc/tmp/backup-schema-<N>/`, runs each Migration in order (N→N+1, then on), and sets `state_schema`. Then it prints the `migrated` line.
+- If any step throws, it restores the backup, removes any file the Migration created, prints `migration <from>→<to> failed, state restored: <error>` and exits 1.
+
+The backup stays after a successful run. `.eqc/tmp/` is gitignored, so you can delete it once you are satisfied.
+
+| Migration | What it changes |
+|---|---|
+| 1 → 2 | If `baseline.json` is missing but `compliance.json` and `rules.json` exist, builds the Baseline from the recorded Verdicts. Projects started on 0.1 had no Baseline until their next merge. |
 
 ## File shapes
 

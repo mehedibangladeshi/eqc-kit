@@ -158,6 +158,6 @@ Review the diff like any other change, commit it, and run `eqc fix` again.
 ## 5. Keep going
 
 - After your team edits the Standard, re-index it: [troubleshooting.md](troubleshooting.md#i-edited-the-standard-how-do-i-re-index).
-- To pick up a newer eqc-kit, run `npx eqc-kit update` ([commands.md](commands.md#update)).
+- To pick up a newer eqc-kit, run `npx eqc-kit update` ([commands.md](commands.md#update)). It migrates `.eqc/` state to the new format and keeps your Verdicts, Baseline and Milestones; commit the result so teammates get the same Engine and state.
 - To share results and review fixes in pull requests: [ci.md](ci.md).
 - Something off? [troubleshooting.md](troubleshooting.md).

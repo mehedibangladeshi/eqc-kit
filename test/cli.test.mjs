@@ -72,6 +72,7 @@ test('init --yes: tree, config, AGENTS.md created, no model in neutral files', (
   assert.equal(rd(r, '.eqc/.gitignore').trim(), 'tmp/');
   const c = cfgOf(r);
   assert.equal(c.schema, 1);
+  assert.equal(c.state_schema, 2);
   assert.equal(c.standard.path, '.eqc/standard/example.md');
   assert.equal(c.report_path, 'docs/eqc/COMPLIANCE.md');
   assert.equal(c.cheap_model, null);
@@ -430,4 +431,28 @@ test('agents-md block carries the same guard text with the eqc check command', (
   cli(r, ['init', '--yes', '--config', writeCfg(r, { adapters: ['agents-md'] })]);
   assert.match(rd(r, 'AGENTS.md'), /`eqc check` <IDs>[\s\S]*eqc\.mjs guard/);
   assert.ok(!ex(r, 'CLAUDE.md'));
+});
+
+test('update: migrates schema-1 state', () => {
+  const r = repo();
+  assert.equal(cli(r, ['init', '--yes']).status, 0);
+  const c = cfgOf(r); delete c.state_schema;
+  fs.writeFileSync(path.join(r, '.eqc/config.json'), JSON.stringify(c, null, 2));
+  fs.writeFileSync(path.join(r, '.eqc/rules.json'), JSON.stringify({ schema: 1, tiers: [{ id: 'B', name: 'Bronze', order: 1 }], rules: [{ id: 'B-1', tier: 'B', order: 1, title: 'x' }] }));
+  fs.writeFileSync(path.join(r, '.eqc/compliance.json'), JSON.stringify({ schema: 1, results: [{ id: 'B-1', status: 'pass', evidence: 'e' }], current_tier: 'B' }));
+  const res = cli(r, ['update', '--yes']);
+  assert.equal(res.status, 0, res.stderr);
+  assert.equal(cfgOf(r).state_schema, 2);
+  assert.ok(JSON.parse(rd(r, '.eqc/baseline.json')).protected.includes('B-1'));
+  assert.ok(ex(r, '.eqc/tmp/backup-schema-1/config.json'));
+});
+
+test('update: failing migrate fails the update', () => {
+  const r = repo();
+  assert.equal(cli(r, ['init', '--yes']).status, 0);
+  const c = cfgOf(r); c.state_schema = 99;
+  fs.writeFileSync(path.join(r, '.eqc/config.json'), JSON.stringify(c, null, 2));
+  const res = cli(r, ['update', '--yes']);
+  assert.notEqual(res.status, 0);
+  assert.match(res.stderr, /state migration failed/);
 });

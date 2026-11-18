@@ -55,6 +55,7 @@ A real file, from init in a Next.js-style repo with every default accepted:
 | `report_path` | string | `docs/eqc/COMPLIANCE.md` | Engine: where the report is written; the adapter files |
 | `cheap_model` | string or null | `null` | `check` and `fix`, Claude Code only |
 | `installed_version` | string | eqc-kit version | Installer. Set by `init` and `update`. |
+| `state_schema` | integer | `2` | Written by `init`; changed only by Migrations via `update` or `migrate`. Missing means 1. Do not edit by hand. |
 
 ### Standard
 

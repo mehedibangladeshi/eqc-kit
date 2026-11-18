@@ -113,6 +113,14 @@ _Avoid_: plugin, integration
 A harness-neutral markdown playbook in `.eqc/prompts/` that an agent follows to audit or fix Rules. Prompts never name a specific AI tool or hook.
 _Avoid_: skill, command, script
 
+**State schema**:
+The single integer `state_schema` in `.eqc/config.json` naming the format of all `.eqc/` state files together. A missing field means 1. Only a Migration changes it.
+_Avoid_: schema version, kit version (the kit version is `installed_version`)
+
+**Migration**:
+One ordered step that rewrites `.eqc/` state from State schema N to N+1 without losing Verdicts, Baseline, Milestones or config. Migrations run during `update`, never during an Audit.
+_Avoid_: upgrade (the whole `update` run), conversion
+
 **Managed file**:
 A file or code block written by the Installer, carrying an eqc-kit marker comment, safe to regenerate on update or reinstall.
 _Avoid_: generated file, template

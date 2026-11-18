@@ -51,7 +51,7 @@ What it does:
 
 1. Detects your stack tags, CI paths and package managers from files in the repo root and one folder down.
 2. Asks the questions (or takes answers from `--config`; `--yes` takes defaults).
-3. Copies the Standard to `.eqc/standard/`, writes `.eqc/config.json`, `.eqc/.gitignore` (`tmp/`) and the vendored Engine and Prompts.
+3. Copies the Standard to `.eqc/standard/`, writes `.eqc/config.json` (with `state_schema` at the current version, 2), `.eqc/.gitignore` (`tmp/`) and the vendored Engine and Prompts.
 4. Writes the adapter files you chose, then `.eqc/manifest.json` with a hash of every Managed file.
 
 With the `claude-code` adapter and an existing `CLAUDE.md` (or with `agents-md` off), `init` also writes a managed block into `CLAUDE.md` between `<!-- eqc-kit:start -->` and `<!-- eqc-kit:end -->`, titled "EQC compliance guard". It sets the rules for development work: read `.eqc/RULES.md`, run `node .eqc/bin/eqc.mjs verify`, re-audit affected protected Rules, run `node .eqc/bin/eqc.mjs guard`, and never finish with a regression. The `AGENTS.md` block carries the same guard rules, so other agents follow them too. See [concepts.md](concepts.md#baseline-and-guard).
@@ -89,6 +89,8 @@ update: 0 written, 0 kept (edited), 14 unchanged
 ```
 
 It also fills in any config keys that newer versions expect and updates `installed_version`. It does not re-detect your stack: `stack.tags` stays as you left it.
+
+After it syncs the Engine, `update` runs `node .eqc/bin/eqc.mjs migrate`, which upgrades the state in `.eqc/` to the current State schema (`state_schema` in `config.json`). A successful run prints `migrated state schema 1 → 2 (backup: ...)`, and the backup in `.eqc/tmp/` is kept. If a migration fails, its state is restored from that backup, `update` exits 1 and prints the Engine's error (`migration 1→2 failed, state restored: ...`). This can happen when you kept a locally edited Engine copy with `--yes` and it is older than the state. See [engine-commands.md](engine-commands.md#migrate).
 
 If you edited a Managed file, `update` will not overwrite it silently. It shows what differs and asks:
 

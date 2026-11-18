@@ -7,6 +7,7 @@ import readline from 'node:readline/promises';
 import { parseArgs } from 'node:util';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { STATE_SCHEMA } from '../engine/eqc.mjs';
 
 const PKG = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const VERSION = JSON.parse(fs.readFileSync(path.join(PKG, 'package.json'), 'utf8')).version;
@@ -255,7 +256,7 @@ async function init(root, opts) {
       standard: { path: `.eqc/standard/${std.name}`, source },
       stack: { detected: d.tags, tags: [...new Set([...isList(tags), 'all'])] },
       ci_paths: isList(ci), package_manager: isList(pm), gates, adapters, report_path: report,
-      cheap_model: cheap || null, installed_version: VERSION,
+      cheap_model: cheap || null, installed_version: VERSION, state_schema: STATE_SCHEMA,
     };
     fs.mkdirSync(path.join(root, '.eqc/standard'), { recursive: true });
     fs.writeFileSync(path.join(root, cfg.standard.path), std.content);
@@ -299,6 +300,11 @@ async function update(root, opts) {
     if (JSON.stringify(nm) !== JSON.stringify(old)) writeJson(path.join(root, '.eqc/manifest.json'), nm);
     console.log(`update: ${res.written.length} written, ${res.kept.length} kept (edited), ${res.same} unchanged`);
     res.written.forEach(f => console.log(`  wrote ${f}`));
+    if (fs.existsSync(path.join(root, '.eqc/bin/eqc.mjs'))) {
+      const m = spawnSync(process.execPath, ['.eqc/bin/eqc.mjs', 'migrate'], { cwd: root, encoding: 'utf8' });
+      if (m.stdout.trim()) console.log(m.stdout.trim());
+      if (m.status !== 0) die(`state migration failed: ${m.stderr.trim()}\nif you kept a locally edited .eqc/bin/eqc.mjs, it may be outdated: run \`npx eqc-kit update --force\` or migrate by hand with \`node .eqc/bin/eqc.mjs migrate\``);
+    }
   } finally { io.close(); }
 }
 

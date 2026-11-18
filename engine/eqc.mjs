@@ -671,6 +671,46 @@ function cmdVerify(idsArg) {
   if (bad) process.exit(1);
 }
 
+// ---------- state schema + migrations ----------
+
+export const STATE_SCHEMA = 2;
+export function stateSchema(cfg) { return cfg?.state_schema ?? 1; }
+
+// MIGRATIONS[i] migrates schema i+1 -> i+2.
+export const MIGRATIONS = [
+  () => { // 1 -> 2: backfill baseline.json from existing compliance
+    const rulesDoc = readJson(file('rules.json')), compliance = readJson(file('compliance.json'));
+    if (rulesDoc && compliance && !fs.existsSync(file('baseline.json'))) {
+      writeJson(file('baseline.json'), updateBaseline(null, rulesDoc, compliance, new Date().toISOString()));
+    }
+  },
+];
+
+const jsonFiles = dir => fs.readdirSync(dir).filter(f => f.endsWith('.json') && fs.statSync(path.join(dir, f)).isFile());
+
+function cmdMigrate() {
+  const cfg = readJson(file('config.json'));
+  if (!cfg) fail('no .eqc/config.json; run `npx eqc-kit init`');
+  const from = stateSchema(cfg);
+  if (!Number.isInteger(from) || from < 1) fail(`invalid state_schema ${JSON.stringify(from)} in .eqc/config.json`);
+  if (from > STATE_SCHEMA) fail(`state schema ${from} is newer than this engine (${STATE_SCHEMA}); upgrade eqc-kit`);
+  if (from === STATE_SCHEMA) return console.log(`state schema ${from}, up to date`);
+  const dir = stateDir(), backup = path.join(dir, 'tmp', `backup-schema-${from}`);
+  fs.rmSync(backup, { recursive: true, force: true });
+  fs.mkdirSync(backup, { recursive: true });
+  const saved = jsonFiles(dir);
+  for (const f of saved) fs.copyFileSync(path.join(dir, f), path.join(backup, f));
+  try {
+    for (const m of MIGRATIONS.slice(from - 1, STATE_SCHEMA - 1)) m();
+    writeJson(file('config.json'), { ...readJson(file('config.json')), state_schema: STATE_SCHEMA });
+  } catch (e) {
+    for (const f of jsonFiles(dir)) if (!saved.includes(f)) fs.rmSync(path.join(dir, f));
+    for (const f of saved) fs.copyFileSync(path.join(backup, f), path.join(dir, f));
+    fail(`migration ${from}→${STATE_SCHEMA} failed, state restored: ${e.message}`);
+  }
+  console.log(`migrated state schema ${from} → ${STATE_SCHEMA} (backup: ${backup})`);
+}
+
 // ---------- selftest ----------
 
 export function selftest() {
@@ -717,10 +757,18 @@ export function selftest() {
 
 // ---------- CLI dispatch ----------
 
-const USAGE = 'usage: eqc.mjs <selftest|reset|report [--write]|rank [keyword]|ids <...>|get <ID...>|merge <file>|guard [--min TIER]|chunks <ID>|check-ids <doc>|milestone add <json>|config get <key>|verify [ID,...]>';
+const USAGE = 'usage: eqc.mjs <selftest|reset|report [--write]|rank [keyword]|ids <...>|get <ID...>|merge <file>|guard [--min TIER]|chunks <ID>|check-ids <doc>|milestone add <json>|config get <key>|verify [ID,...]|migrate>';
 
 export function main(argv = process.argv.slice(2)) {
   const [cmd, ...args] = argv;
+  if (['reset', 'report', 'rank', 'ids', 'get', 'merge', 'guard', 'chunks', 'milestone', 'config', 'verify'].includes(cmd)) {
+    const cfg = readJson(file('config.json'));
+    if (cfg) {
+      const v = stateSchema(cfg);
+      if (v < STATE_SCHEMA) fail(`state schema ${v} is older than this engine (${STATE_SCHEMA}); run \`npx eqc-kit update\``);
+      if (v > STATE_SCHEMA) fail(`state schema ${v} is newer than this engine (${STATE_SCHEMA}); upgrade eqc-kit`);
+    }
+  }
   switch (cmd) {
     case 'selftest': return selftest();
     case 'reset': return cmdReset();
@@ -735,6 +783,7 @@ export function main(argv = process.argv.slice(2)) {
     case 'milestone': return cmdMilestone(args[0], args[1]);
     case 'config': return cmdConfig(args[0], args[1]);
     case 'verify': return cmdVerify(args[0]);
+    case 'migrate': return cmdMigrate();
     default: return fail(USAGE);
   }
 }
