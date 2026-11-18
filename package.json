@@ -1,6 +1,6 @@
 {
   "name": "eqc-kit",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A tool-agnostic kit that helps developers raise their project's compliance with a tiered engineering-quality standard.",
   "type": "module",
   "license": "MIT",
