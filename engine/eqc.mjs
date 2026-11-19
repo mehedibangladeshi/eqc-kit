@@ -673,7 +673,8 @@ function cmdReindex(filePath) {
   const delta = diffRules(oldDoc?.rules || [], next.rules);
   const rename = new Map(delta.moved.map(m => [m.from, m.to]));
   const drop = new Set([...delta.changed, ...delta.removed]);
-  const carry = id => (drop.has(id) ? null : rename.get(id) ?? id);
+  const oldIds = new Set((oldDoc?.rules || []).map(r => r.id));
+  const carry = id => (!oldIds.has(id) || drop.has(id) ? null : rename.get(id) ?? id);
 
   const prevCompliance = readJson(file('compliance.json'));
   const prevBaseline = readJson(file('baseline.json'));
@@ -693,15 +694,21 @@ function cmdReindex(filePath) {
   if (prevCompliance) writeJson(file('compliance.json'), compliance);
   if (baseline) writeJson(file('baseline.json'), baseline);
   fs.rmSync(filePath, { force: true });
-  if (prevCompliance) writeReport(next, compliance, baseline);
+  if (compliance) writeReport(next, compliance, baseline);
   console.log(JSON.stringify(delta));
 }
 
-function cmdCheckIds(docPath) {
-  if (!docPath) fail('usage: eqc.mjs check-ids <doc-path>');
+function cmdCheckIds(docPath, indexPath) {
+  if (!docPath) fail('usage: eqc.mjs check-ids <doc-path> [index-file]');
   if (!fs.existsSync(docPath)) fail(`check-ids: doc not found: ${docPath}`);
-  const rulesDoc = readJson(file('rules.json'));
-  if (!rulesDoc) fail(NO_INDEX_MSG, 2);
+  let rulesDoc;
+  if (indexPath) {
+    try { rulesDoc = JSON.parse(fs.readFileSync(indexPath, 'utf8')); }
+    catch (e) { fail(`check-ids: cannot read ${indexPath}: ${e.message}`); }
+  } else {
+    rulesDoc = readJson(file('rules.json'));
+    if (!rulesDoc) fail(NO_INDEX_MSG, 2);
+  }
   const { mismatches, okCount } = checkIds(fs.readFileSync(docPath, 'utf8'), rulesDoc.rules, rulesDoc.tiers);
   for (const m of mismatches) console.log(`${m.id}: ${m.reason}`);
   if (mismatches.length) process.exit(1);
@@ -842,7 +849,7 @@ export function selftest() {
 
 // ---------- CLI dispatch ----------
 
-const USAGE = 'usage: eqc.mjs <selftest|reset|report [--write]|rank [keyword]|ids <...>|get <ID...>|merge <file>|reindex <file>|guard [--min TIER]|chunks <ID>|check-ids <doc>|milestone add <json>|config get <key>|verify [ID,...]|migrate>';
+const USAGE = 'usage: eqc.mjs <selftest|reset|report [--write]|rank [keyword]|ids <...>|get <ID...>|merge <file>|reindex <file>|guard [--min TIER]|chunks <ID>|check-ids <doc> [index-file]|milestone add <json>|config get <key>|verify [ID,...]|migrate>';
 
 export function main(argv = process.argv.slice(2)) {
   const [cmd, ...args] = argv;
@@ -865,7 +872,7 @@ export function main(argv = process.argv.slice(2)) {
     case 'reindex': return args[0] ? cmdReindex(args[0]) : fail('usage: eqc.mjs reindex <file>');
     case 'guard': return cmdGuard(args);
     case 'chunks': return cmdChunks(args[0]);
-    case 'check-ids': return cmdCheckIds(args[0]);
+    case 'check-ids': return cmdCheckIds(args[0], args[1]);
     case 'milestone': return cmdMilestone(args[0], args[1]);
     case 'config': return cmdConfig(args[0], args[1]);
     case 'verify': return cmdVerify(args[0]);

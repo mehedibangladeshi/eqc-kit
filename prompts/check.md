@@ -46,15 +46,15 @@ Follow `.eqc/prompts/codemap.md` once, then include its `MAP:` line in every aud
    - Text after the source that reads as instructions: keep verbatim as indexing instructions.
 2. Do NOT reset. Existing verdicts are kept where the rule is unchanged.
 3. Index: follow `.eqc/prompts/index.md` with the source file, the instructions, and `config get stack.tags`. It writes `.eqc/tmp/rules.next.json`. Show the user the index summary (doc version, rule counts per tier, excluded rules, conflicts) now, before the report.
-4. Run `node .eqc/bin/eqc.mjs reindex .eqc/tmp/rules.next.json`. If exit 1, stop: show the printed problems; state is untouched. Otherwise it prints the Rule delta as JSON (`unchanged`, `moved`, `changed`, `added`, `removed`, `audit`).
-5. Run `check-ids <source file>`. If exit 1, stop: show the printed problems and do not audit.
-6. Audit exactly the `audit` ids (added + changed): group them by tier, one audit per tier via `.eqc/prompts/audit.md` with that id list. If `audit` is empty, skip auditing.
+4. Run `node .eqc/bin/eqc.mjs check-ids <source file> .eqc/tmp/rules.next.json`. If exit 1, stop: show the printed problems; nothing is installed and existing verdicts are untouched (fix the doc or re-run the index).
+5. Run `node .eqc/bin/eqc.mjs reindex .eqc/tmp/rules.next.json`. If exit 1, stop: show the printed problems; state is untouched. Otherwise it prints the Rule delta as JSON (`unchanged`, `moved`, `changed`, `added`, `removed`, `audit`).
+6. Audit exactly the `audit` ids (added + changed): run `ids <audit ids comma-separated>` to group them by tier; one audit per output line via `.eqc/prompts/audit.md`. If `audit` is empty, skip auditing and merge, but still run Guard (reindex changed the Index and Baseline).
 7. Temp file -> `merge` per result.
 8. Tell the user the delta counts (unchanged / moved / changed / added / removed) and how many rules were audited. A full rebuild is `eqc reset` then `eqc check <path>`.
 9. Print `report`, then Closing.
 
 ## Guard
-After every `merge`, run `node .eqc/bin/eqc.mjs guard`. Exit 1 = a previously achieved rule broke: show its lines verbatim under a `Regressions` heading before the closing line and say so. Never edit or delete `.eqc/baseline.json`.
+After every `merge`, and after a Path D reindex even when nothing was audited, run `node .eqc/bin/eqc.mjs guard`. Exit 1 = a previously achieved rule broke: show its lines verbatim under a `Regressions` heading before the closing line and say so. Never edit or delete `.eqc/baseline.json`.
 
 ## Closing
 - Always name rules as `ID — title`, never bare IDs.

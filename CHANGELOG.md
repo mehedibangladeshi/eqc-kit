@@ -11,6 +11,11 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 - Editing the Standard and running `eqc check <path>` re-indexes instead of resetting. Verdicts are kept, and only added and changed Rules are re-audited. Use `eqc reset` and then `eqc check <path>` for a full rebuild.
 - A Re-index can lower the Baseline level when the Standard raises the bar. Later merges ratchet it up again.
 
+### Fixed
+- Re-index no longer attaches a stale Verdict to a newly added Rule. Only Rules in the old Index carry Verdicts across.
+- The new Index is validated with `check-ids <doc> <index-file>` before install, so a mismatch leaves state untouched. The editing-Standard flow runs it on `.eqc/tmp/rules.next.json` before `reindex`.
+- Re-index regenerates the report when only a Baseline existed, not only when `compliance.json` existed.
+
 ## [0.3.0] - 2026-11-18
 
 ### Added

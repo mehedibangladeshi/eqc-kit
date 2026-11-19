@@ -686,3 +686,44 @@ test('reindex: invalid input exits 1 and leaves state untouched', () => {
   assert.equal(sb.run('reindex', path.join(sb.root, 'missing.json')).status, 1);
   assert.deepEqual(snap(), before);
 });
+
+test('reindex: stdout moved lists exact from/to pairs', () => {
+  const sb = sandbox();
+  sb.run('reindex', sb.writeTmp('a.json', idx([R('B-3', 'A'), R('B-4', 'B')])));
+  const r = sb.run('reindex', sb.writeTmp('b.json', idx([R('B-3', 'X'), R('B-4', 'A'), R('B-5', 'B')])));
+  assert.deepEqual(JSON.parse(r.stdout).moved, [{ from: 'B-3', to: 'B-4' }, { from: 'B-4', to: 'B-5' }]);
+});
+
+test('reindex: orphan result (id not in old rules) is not carried to a newly added rule', () => {
+  const sb = sandbox();
+  sb.run('reindex', sb.writeTmp('a.json', idx([R('B-1', 'a')])));
+  fs.writeFileSync(path.join(sb.dir, 'compliance.json'), JSON.stringify({ schema: 1, audited_at: '2026-01-01', results: [{ id: 'B-1', status: 'pass' }, { id: 'B-2', status: 'pass' }] }));
+  const r = sb.run('reindex', sb.writeTmp('b.json', idx([R('B-1', 'a'), R('B-2', 'new')])));
+  assert.equal(r.status, 0);
+  assert.deepEqual(sb.readJson('compliance.json').results.map(x => x.id), ['B-1']);
+  assert.deepEqual(JSON.parse(r.stdout).audit, ['B-2']);
+});
+
+test('reindex: baseline without compliance still regenerates RULES.md', () => {
+  const sb = sandbox();
+  sb.run('reindex', sb.writeTmp('a.json', idx([R('B-1', 'a')])));
+  fs.writeFileSync(path.join(sb.dir, 'baseline.json'), JSON.stringify({ schema: 1, level: 'NONE', protected: ['B-1'] }));
+  assert.equal(fs.existsSync(path.join(sb.dir, 'RULES.md')), false);
+  const r = sb.run('reindex', sb.writeTmp('b.json', idx([R('B-1', 'a')])));
+  assert.equal(r.status, 0);
+  assert.equal(fs.existsSync(path.join(sb.dir, 'RULES.md')), true);
+  assert.equal(fs.existsSync(path.join(sb.dir, 'compliance.json')), false);
+  JSON.parse(r.stdout);
+});
+
+test('check-ids index-file arg: passes on matching index, fails on missing, default works', () => {
+  const sb = sandbox('example');
+  const p = sb.writeTmp('idx.json', loadRules('example'));
+  const ok = sb.run('check-ids', EXAMPLE_MD, p);
+  assert.equal(ok.status, 0, ok.stdout);
+  assert.equal(ok.stdout.trim(), 'check-ids: 17 rules OK');
+  const bad = sb.run('check-ids', EXAMPLE_MD, path.join(sb.root, 'nope.json'));
+  assert.equal(bad.status, 1);
+  assert.match(bad.stdout, /^check-ids:/);
+  assert.equal(sb.run('check-ids', EXAMPLE_MD).status, 0);
+});
