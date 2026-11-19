@@ -1,9 +1,9 @@
 # eqc index — parse a quality-standard document into a structured, stack-filtered rule index.
 
 Inputs: path to the standard doc (a file; line numbers refer to it); optional indexing instructions; stack tags from `node .eqc/bin/eqc.mjs config get stack.tags`.
-Outputs: `.eqc/rules.json` (you write it directly; the only prompt allowed to), `.eqc/doc-meta.md`, and a short reply.
+Outputs: `.eqc/tmp/rules.next.json` (you write it directly, creating `.eqc/tmp/` if missing; the only prompt allowed to write an Index file), `.eqc/doc-meta.md`, and a short reply. The caller installs the file with `node .eqc/bin/eqc.mjs reindex .eqc/tmp/rules.next.json`; do not run that yourself.
 
-There is no prior index; every run is a from-scratch build. Do not diff against an old one.
+Every run is a from-scratch build. Never read or diff against the old `.eqc/rules.json`; the engine computes the delta.
 
 ## Steps
 1. Read the doc fully. Determine its tiers: they are DOC-DEFINED and ordered, lowest first. No fixed names.
@@ -18,7 +18,7 @@ There is no prior index; every run is a from-scratch build. Do not diff against 
 6. `detection_hint`: a concrete, checkable signal (file, config key, dependency, code pattern) inferred by looking at this repo. Do not invent facts; the auditor verifies.
 7. `verify` (optional): a shell command, run from the repo root, that exits 0 when the rule is met and non-zero when code breaks it. Add it ONLY for rules a command can check mechanically on the code (lint clean, no debug prints, no hardcoded URLs, formatter clean). Prefer the project's own scripts (`npm run lint`, `ruff check .`, `test -z "$(gofmt -l .)"`); otherwise a targeted search like `! git grep -nE "console\.log" -- 'src/*.ts'`. It must be read-only, fast (seconds), need no network, and work on a fresh clone with dependencies installed. Repo-level rules (CI exists, README, release process) get no `verify`. When unsure, omit it: git hooks and CI run these commands, so a noisy one blocks every commit.
 8. `source_line` = 1-based line in the doc file where the item's printed number and title appear.
-9. Write `.eqc/rules.json`, replacing any existing file:
+9. Write `.eqc/tmp/rules.next.json`, replacing any existing file there:
 ```json
 {"schema":1,"standard":{"title":"","version":"","date":"","source_path":""},"stack_tags":[],"indexed_at":"YYYY-MM-DD",
  "tiers":[{"id":"BRONZE","name":"Bronze","order":1,"section_heading":"Bronze"}],

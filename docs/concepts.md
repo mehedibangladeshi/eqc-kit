@@ -131,11 +131,27 @@ You may edit a Plan before approving it.
 
 Each fix attempt ends with a Milestone in `.eqc/milestones.json`: rule, tier, date, one-line summary and status `done`, `partial`, `blocked` or `failed`. It is a history log. A rebuild from a new Standard keeps it.
 
+## Re-index
+
+When you edit the Standard, run `eqc check <path>` again. The agent builds a fresh Index from the edited Standard, and the Engine compares it with the current one into a **Rule delta**. Each Rule is:
+
+- **unchanged**: same ID and same content. Keeps its Verdict and protection.
+- **moved**: same content and Tier under a new ID, for example after a renumbering. Keeps its Verdict and protection under the new ID.
+- **changed**: same ID, new title, detail, Tier, tags or verify command. Loses its Verdict and protection, and is audited again.
+- **added**: a new Rule. Audited.
+- **removed**: no longer in the Standard. Loses its Verdict and protection.
+
+Only added and changed Rules are audited. A Re-index does not reset anything. A pass recorded against old wording proves nothing about the new wording, which is why changed Rules start again.
+
+A Re-index sets the Baseline level to the Compliance level recomputed after carry-over, so it can go down. That is intended: when the Standard raises the bar, a lower level is not a Regression, and a strict ratchet would fail every hook and CI run until the new Rules were fixed. Later merges ratchet up again.
+
+For a full rebuild, run `eqc reset` and then `eqc check <path>`. If a Re-index is interrupted, `eqc check recheck` finishes the Rules that have no Verdict.
+
 ## Baseline and guard
 
-The **baseline** (`.eqc/baseline.json`) is a ratchet. Each merge records the Compliance level and every Rule that has passed so far, as the protected Rules. A protected Rule stays protected if a later audit marks it partial or fail, and the level in the baseline never goes down.
+The **baseline** (`.eqc/baseline.json`) is a ratchet. Each merge records the Compliance level and every Rule that has passed so far, as the protected Rules. A protected Rule stays protected if a later audit marks it partial or fail, and the level in the baseline never goes down, except on a Re-index (see above).
 
-The **guard** (`eqc guard`) compares the current Verdicts with the baseline. It fails when a protected Rule is now `fail`, `partial` or unaudited, or when the level drops below the baseline. `na` is not a regression. The guard checks recorded Verdicts; it does not audit, so re-audit the affected Rules first. The only way to lower the baseline is to delete the file by hand, which is a deliberate decision.
+The **guard** (`eqc guard`) compares the current Verdicts with the baseline. It fails when a protected Rule is now `fail`, `partial` or unaudited, or when the level drops below the baseline. `na` is not a regression. The guard checks recorded Verdicts; it does not audit, so re-audit the affected Rules first. Apart from a Re-index, the only way to lower the baseline is to delete the file by hand, which is a deliberate decision.
 
 The agent is told to follow the same loop for any development work: re-audit affected protected Rules, run the guard, and never finish with a regression. Claude Code gets this as a managed block in `CLAUDE.md` when that file exists; otherwise it, like other agents, reads it in the `AGENTS.md` block. In CI, the guard is a single command; see [ci.md](ci.md#verify-and-guard-in-ci).
 

@@ -4,6 +4,13 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+### Added
+- Engine command `reindex <file>` makes the agent's new Index the Index. It prints the Rule delta as JSON (`unchanged`, `moved`, `changed`, `added`, `removed`, `audit`), carries Verdicts and Baseline protection across for unchanged and renumbered Rules, and deletes the input file. Invalid input exits 1 and changes nothing.
+
+### Changed
+- Editing the Standard and running `eqc check <path>` re-indexes instead of resetting. Verdicts are kept, and only added and changed Rules are re-audited. Use `eqc reset` and then `eqc check <path>` for a full rebuild.
+- A Re-index can lower the Baseline level when the Standard raises the bar. Later merges ratchet it up again.
+
 ## [0.3.0] - 2026-11-18
 
 ### Added

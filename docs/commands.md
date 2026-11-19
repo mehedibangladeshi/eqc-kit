@@ -242,6 +242,10 @@ In an empty or broken install:
 
 When a modified file is listed, the "N managed files present and unmodified" line is not printed.
 
+## Editing the Standard
+
+Edit the Standard, then run `eqc check <path-to-standard.md>` in your agent. It re-indexes and keeps Verdicts: unchanged and renumbered Rules keep theirs, and only added or changed Rules are re-audited. The Baseline level can drop if the Standard raised the bar. For a clean slate, run `eqc reset` first. The steps are in [concepts.md](concepts.md#re-index) and [engine-commands.md](engine-commands.md#reindex-file).
+
 ## `help`
 
 Prints a quick start (`init`, then `eqc check`, then `eqc fix`), every installer command with its key flags, and how to ask your agent for help. It works before anything is installed and writes nothing. `--help`, `-h` and running with no command print the same thing.

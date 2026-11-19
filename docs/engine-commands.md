@@ -22,7 +22,7 @@ All examples on this page were produced by really running the Engine against `st
 | 1 | Error or validation failure (bad input, unknown key, unusable file, mismatches), or `guard` found a regression |
 | 2 | No index yet (`rules.json` is missing) |
 
-Errors are printed to stdout, not stderr.
+Errors are printed to stdout, not stderr. The exception is `reindex`, which prints its errors to stderr.
 
 ```
 $ node .eqc/bin/eqc.mjs report
@@ -43,6 +43,7 @@ $ echo $?
 | `ids <arg>` | Resolve which Rules to audit, grouped by Tier | nothing |
 | `get <ID,ID...>` | Show a Rule and its latest Verdict as JSON | nothing |
 | `merge <file>` | Merge Verdicts, recompute the level and baseline, refresh the report | `compliance.json`, `baseline.json`, report (Markdown and HTML), `.eqc/RULES.md` |
+| `reindex <file>` | Replace the Index with an edited Standard's, carry Verdicts over, print the Rule delta | `rules.json`, `compliance.json` and `baseline.json` (if they exist), report (if `compliance.json` existed), deletes `<file>` |
 | `chunks <ID>` | Show progress of a Plan | nothing |
 | `check-ids <doc>` | Validate the Index against the Standard file | nothing |
 | `milestone add '<json>'` | Append a Milestone | `milestones.json` |
@@ -289,9 +290,37 @@ $ echo $?
 
 An unreadable file prints `merge: cannot read <path>: <reason>` and exits 1.
 
+## `reindex <file>`
+
+Takes the Index that the agent wrote for an edited Standard (usually `.eqc/tmp/rules.next.json`) and makes it the Index. It is the Engine half of `eqc check <path>` on an edited Standard (see [Re-index in concepts.md](concepts.md#re-index)). The Engine compares the new Index with the current `rules.json` into a Rule delta, then:
+
+- writes the new Index to `rules.json`;
+- carries Verdicts into `compliance.json`: unchanged and moved Rules keep theirs (moved ones under the new ID), changed and removed Rules lose theirs. It recomputes the tier summary and the Compliance level;
+- carries Baseline protection the same way and sets the Baseline `level` to the recomputed Compliance level, so it can go down;
+- regenerates the report, if `compliance.json` existed;
+- deletes `<file>`.
+
+Nothing is audited here. Audit the `audit` IDs (added and changed Rules), then `merge`. Without a prior Index, every Rule is `added`. The state schema is checked first, like the other state commands.
+
+The command prints one line of JSON, the Rule delta. `audit` is `added` plus `changed`. A moved Rule shows its old and new ID:
+
+```
+$ node .eqc/bin/eqc.mjs reindex .eqc/tmp/rules.next.json
+{"unchanged":["BRONZE-1","BRONZE-2","BRONZE-3","SILVER-1","SILVER-3","SILVER-4","SILVER-5","SILVER-6","GOLD-1","GOLD-2","GOLD-3","GOLD-4","GOLD-5"],"moved":[{"from":"BRONZE-5","to":"BRONZE-4"},{"from":"BRONZE-6","to":"BRONZE-5"}],"changed":["SILVER-2"],"added":["GOLD-6"],"removed":["BRONZE-4"],"audit":["SILVER-2","GOLD-6"]}
+```
+
+The example is illustrative: it shows the shape of the output, not a captured run. Here the old `BRONZE-4` was removed, and the Rules after it were renumbered (`BRONZE-5` to `BRONZE-4`, `BRONZE-6` to `BRONZE-5`), so both keep their Verdicts under the new IDs. `SILVER-2` was reworded, so it is audited again, and `GOLD-6` is new. Run `eqc check` for `SILVER-2` and `GOLD-6` in your agent, then `merge` the result.
+
+Exit codes:
+
+| Code | Meaning |
+|---|---|
+| 0 | Delta printed; state written |
+| 1 | The file is missing, not valid JSON, or fails the Index checks (no non-empty `tiers[]` and `rules[]`, a Rule without string `id`, `tier` and `title`, or a Rule whose tier is unknown). The problem is printed to stderr as `reindex: <problem>`, for example `reindex: cannot read <path>: <reason>`. Nothing is changed and the input file is kept. A state schema mismatch also exits 1 |
+
 ## `reset`
 
-Deletes `rules.json`, `compliance.json`, `doc-meta.md` and `baseline.json` (works on any OS; missing files are fine). Keeps `milestones.json`, `plans/`, `config.json` and `standard/`. Deleting the baseline forgets the protected Rules, so the next merge starts a new one. `eqc check <new-standard>` runs it before re-indexing.
+Deletes `rules.json`, `compliance.json`, `doc-meta.md` and `baseline.json` (works on any OS; missing files are fine). Keeps `milestones.json`, `plans/`, `config.json` and `standard/`. Deleting the baseline forgets the protected Rules, so the next merge starts a new one. Re-indexing an edited Standard does not run `reset`; use it for a clean slate, then `eqc check <path>` for a full rebuild.
 
 ```
 $ node .eqc/bin/eqc.mjs reset
@@ -459,7 +488,7 @@ The Rule digest, rewritten by every `merge` (and `report --write`): one line per
 
 ### `compliance.json`
 
-Written only by `merge`. Never edit it by hand.
+Written by `merge` and `reindex`. Never edit it by hand.
 
 ```json
 {
@@ -488,9 +517,9 @@ Written only by `merge`. Never edit it by hand.
 
 ### `baseline.json`
 
-Written only by `merge`, never by hand. Each merge sets `protected` to the previous protected Rules plus every Rule that passes now, in Index order. `level` is the highest Compliance level reached so far and is kept when a later merge would lower it. `reset` deletes the file. Commit it: CI's `guard` reads it.
+Written by `merge` and `reindex`, never by hand. Each merge sets `protected` to the previous protected Rules plus every Rule that passes now, in Index order. `level` is the highest Compliance level reached so far and is kept when a later merge would lower it. A `reindex` instead sets `level` to the recomputed Compliance level, and drops protection from changed and removed Rules. `reset` deletes the file. Commit it: CI's `guard` reads it.
 
-The only way to lower the baseline is to delete the file by hand. That is a deliberate decision to accept a lower bar, so review it like any other change.
+Apart from a `reindex` (which happens when the Standard itself changed), the only way to lower the baseline is to delete the file by hand. That is a deliberate decision to accept a lower bar, so review it like any other change.
 
 ```json
 {

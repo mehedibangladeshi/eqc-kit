@@ -37,19 +37,21 @@ Follow `.eqc/prompts/codemap.md` once, then include its `MAP:` line in every aud
 3. Temp file -> `merge` per result.
 4. Print a short before/after for just those rules, one line each: `ID — title: <before> → <after>`, and whether the compliance level changed (titles from `get`). Then Closing (one-line only).
 
-## Path D — new or missing source: reset and rebuild
+## Path D — new or edited source: re-index
 1. Resolve the source to a FILE (indexer line numbers refer to a file):
    - File path: use it.
    - Pasted text: write it verbatim to a temp file.
    - URL: fetch the content with whatever tool you have and write it to a temp file. If you cannot fetch it, stop and report the error; do not guess.
    - Empty input: use `config get standard.path`.
    - Text after the source that reads as instructions: keep verbatim as indexing instructions.
-2. Reset: run `node .eqc/bin/eqc.mjs reset`. It keeps milestones, plans, config and the standard as history.
-3. Index: follow `.eqc/prompts/index.md` with the source file, the instructions, and `config get stack.tags`. Show the user the index summary (doc version, rule counts per tier, excluded rules, conflicts) now, before the report.
-4. Run `check-ids <source file>`. If exit 1, stop: show the printed problems and do not audit.
-5. Full audit: `ids full`, one audit per tier line (as in Path B step 2).
-6. Temp file -> `merge` per result.
-7. Print `report`, then Closing.
+2. Do NOT reset. Existing verdicts are kept where the rule is unchanged.
+3. Index: follow `.eqc/prompts/index.md` with the source file, the instructions, and `config get stack.tags`. It writes `.eqc/tmp/rules.next.json`. Show the user the index summary (doc version, rule counts per tier, excluded rules, conflicts) now, before the report.
+4. Run `node .eqc/bin/eqc.mjs reindex .eqc/tmp/rules.next.json`. If exit 1, stop: show the printed problems; state is untouched. Otherwise it prints the Rule delta as JSON (`unchanged`, `moved`, `changed`, `added`, `removed`, `audit`).
+5. Run `check-ids <source file>`. If exit 1, stop: show the printed problems and do not audit.
+6. Audit exactly the `audit` ids (added + changed): group them by tier, one audit per tier via `.eqc/prompts/audit.md` with that id list. If `audit` is empty, skip auditing.
+7. Temp file -> `merge` per result.
+8. Tell the user the delta counts (unchanged / moved / changed / added / removed) and how many rules were audited. A full rebuild is `eqc reset` then `eqc check <path>`.
+9. Print `report`, then Closing.
 
 ## Guard
 After every `merge`, run `node .eqc/bin/eqc.mjs guard`. Exit 1 = a previously achieved rule broke: show its lines verbatim under a `Regressions` heading before the closing line and say so. Never edit or delete `.eqc/baseline.json`.
@@ -58,5 +60,5 @@ After every `merge`, run `node .eqc/bin/eqc.mjs guard`. Exit 1 = a previously ac
 - Always name rules as `ID — title`, never bare IDs.
 - After the report, add one line naming what blocks the next compliance level as `ID — title` (max ~5, then "+N more — see report"; from the report's `## To reach` list, plus any unaudited count; a `NONE` level means the lowest tier still has unaudited rules, so suggest `eqc check full`). If the level is HARD_FAIL, the next level is the lowest tier: name its fails.
 - After the report, say once where the HTML report is: the path from `config get report_path` with `.html` instead of `.md`, as "Open <path> in a browser for the visual report."
-- After Path D only, also say: "Commit `.eqc/` (tmp/ is ignored) and the report so teammates share the level."
+- After Path D only, also say the Baseline level may have been lowered if the standard raised the bar, and: "Commit `.eqc/` (tmp/ is ignored) and the report so teammates share the level."
 - End with: `next: eqc fix`

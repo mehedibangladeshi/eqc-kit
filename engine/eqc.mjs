@@ -460,6 +460,42 @@ export function verifyTargets(rules, results, ids) {
   return rules.filter(r => r.verify && pass.has(r.id) && (!ids || ids.includes(r.id)));
 }
 
+// ---------- re-index (pure) ----------
+
+const ruleKey = r => JSON.stringify({ title: r.title ?? null, detail: r.detail ?? null, tier: r.tier ?? null, applies_to: r.applies_to ?? [], verify: r.verify ?? null });
+
+// Rule delta between two indexes. Order of matching: same id+content, same content (moved), same id (changed).
+export function diffRules(oldRules, newRules) {
+  const out = { unchanged: [], moved: [], changed: [], added: [], removed: [], audit: [] };
+  const oldLeft = new Set(oldRules.map((_, i) => i));
+  const kind = new Map(); // new index -> 'unchanged' | {from} | 'changed'
+  const oldKeys = oldRules.map(ruleKey);
+  const newKeys = newRules.map(ruleKey);
+  newRules.forEach((n, j) => {
+    const i = oldRules.findIndex((o, i) => oldLeft.has(i) && o.id === n.id && oldKeys[i] === newKeys[j]);
+    if (i !== -1) { oldLeft.delete(i); kind.set(j, 'unchanged'); }
+  });
+  newRules.forEach((n, j) => {
+    if (kind.has(j)) return;
+    const i = oldRules.findIndex((_, i) => oldLeft.has(i) && oldKeys[i] === newKeys[j]);
+    if (i !== -1) { oldLeft.delete(i); kind.set(j, { from: oldRules[i].id }); }
+  });
+  newRules.forEach((n, j) => {
+    if (kind.has(j)) return;
+    const i = oldRules.findIndex((o, i) => oldLeft.has(i) && o.id === n.id);
+    if (i !== -1) { oldLeft.delete(i); kind.set(j, 'changed'); }
+  });
+  newRules.forEach((n, j) => {
+    const k = kind.get(j);
+    if (k === 'unchanged') out.unchanged.push(n.id);
+    else if (k === 'changed') { out.changed.push(n.id); out.audit.push(n.id); }
+    else if (k) out.moved.push({ from: k.from, to: n.id });
+    else { out.added.push(n.id); out.audit.push(n.id); }
+  });
+  out.removed = oldRules.filter((_, i) => oldLeft.has(i)).map(r => r.id);
+  return out;
+}
+
 // ---------- file IO ----------
 
 function readJson(p) {
@@ -612,6 +648,55 @@ function cmdMerge(filePath) {
   }
 }
 
+function validateIndex(d) {
+  if (!d || typeof d !== 'object' || !Array.isArray(d.tiers) || !d.tiers.length || !Array.isArray(d.rules) || !d.rules.length) return 'needs non-empty tiers[] and rules[]';
+  const tierSet = new Set(d.tiers.map(t => t?.id));
+  const seen = new Set();
+  for (const r of d.rules) {
+    if (!r || ['id', 'tier', 'title'].some(k => typeof r[k] !== 'string' || !r[k])) return 'every rule needs string id, tier, title';
+    if (!tierSet.has(r.tier)) return `rule ${r.id}: unknown tier ${r.tier}`;
+    if (seen.has(r.id)) return `duplicate rule id ${r.id}`;
+    seen.add(r.id);
+  }
+  return null;
+}
+
+function cmdReindex(filePath) {
+  const bad = msg => { console.error(`reindex: ${msg}`); process.exit(1); };
+  let next;
+  try { next = JSON.parse(fs.readFileSync(filePath, 'utf8')); }
+  catch (e) { bad(`cannot read ${filePath}: ${e.message}`); }
+  const problem = validateIndex(next);
+  if (problem) bad(problem);
+
+  const oldDoc = readJson(file('rules.json'));
+  const delta = diffRules(oldDoc?.rules || [], next.rules);
+  const rename = new Map(delta.moved.map(m => [m.from, m.to]));
+  const drop = new Set([...delta.changed, ...delta.removed]);
+  const carry = id => (drop.has(id) ? null : rename.get(id) ?? id);
+
+  const prevCompliance = readJson(file('compliance.json'));
+  const prevBaseline = readJson(file('baseline.json'));
+  let compliance = null;
+  if (prevCompliance || prevBaseline) {
+    const results = (prevCompliance?.results || []).flatMap(r => { const id = carry(r.id); return id ? [{ ...r, id }] : []; });
+    const tier_summary = buildTierSummary(next.rules, results, next.tiers);
+    compliance = { ...(prevCompliance || { schema: 1, audited_at: todayLocal() }), standard_version: next.standard?.version, results, tier_summary, current_tier: computeCurrentTier(tier_summary, next.tiers) };
+  }
+  let baseline = null;
+  if (prevBaseline) {
+    const pos = new Map(next.rules.map((r, i) => [r.id, i]));
+    const ids = [...new Set(prevBaseline.protected.map(carry).filter(id => id && pos.has(id)))].sort((a, b) => pos.get(a) - pos.get(b));
+    baseline = { schema: 1, standard_version: next.standard?.version, level: compliance.current_tier, updated_at: new Date().toISOString(), protected: ids };
+  }
+  writeJson(file('rules.json'), next);
+  if (prevCompliance) writeJson(file('compliance.json'), compliance);
+  if (baseline) writeJson(file('baseline.json'), baseline);
+  fs.rmSync(filePath, { force: true });
+  if (prevCompliance) writeReport(next, compliance, baseline);
+  console.log(JSON.stringify(delta));
+}
+
 function cmdCheckIds(docPath) {
   if (!docPath) fail('usage: eqc.mjs check-ids <doc-path>');
   if (!fs.existsSync(docPath)) fail(`check-ids: doc not found: ${docPath}`);
@@ -757,11 +842,11 @@ export function selftest() {
 
 // ---------- CLI dispatch ----------
 
-const USAGE = 'usage: eqc.mjs <selftest|reset|report [--write]|rank [keyword]|ids <...>|get <ID...>|merge <file>|guard [--min TIER]|chunks <ID>|check-ids <doc>|milestone add <json>|config get <key>|verify [ID,...]|migrate>';
+const USAGE = 'usage: eqc.mjs <selftest|reset|report [--write]|rank [keyword]|ids <...>|get <ID...>|merge <file>|reindex <file>|guard [--min TIER]|chunks <ID>|check-ids <doc>|milestone add <json>|config get <key>|verify [ID,...]|migrate>';
 
 export function main(argv = process.argv.slice(2)) {
   const [cmd, ...args] = argv;
-  if (['reset', 'report', 'rank', 'ids', 'get', 'merge', 'guard', 'chunks', 'milestone', 'config', 'verify'].includes(cmd)) {
+  if (['reset', 'report', 'rank', 'ids', 'get', 'merge', 'reindex', 'guard', 'chunks', 'milestone', 'config', 'verify'].includes(cmd)) {
     const cfg = readJson(file('config.json'));
     if (cfg) {
       const v = stateSchema(cfg);
@@ -777,6 +862,7 @@ export function main(argv = process.argv.slice(2)) {
     case 'ids': return cmdIds(args[0]);
     case 'get': return cmdGet(args);
     case 'merge': return args[0] ? cmdMerge(args[0]) : fail('usage: eqc.mjs merge <file>');
+    case 'reindex': return args[0] ? cmdReindex(args[0]) : fail('usage: eqc.mjs reindex <file>');
     case 'guard': return cmdGuard(args);
     case 'chunks': return cmdChunks(args[0]);
     case 'check-ids': return cmdCheckIds(args[0]);

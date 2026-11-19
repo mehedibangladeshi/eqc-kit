@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import {
   buildTierSummary, computeCurrentTier, rankCandidates, selectIds, groupByTier,
-  parsePlanChunks, formatChunkStatus, checkIds, buildDigest, updateBaseline, findRegressions, buildHtmlReport,
+  parsePlanChunks, formatChunkStatus, checkIds, buildDigest, updateBaseline, findRegressions, buildHtmlReport, diffRules,
 } from '../engine/eqc.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -624,4 +624,65 @@ test('schema gate: selftest runs regardless of schema', () => {
   assert.equal(sb.run('selftest').status, 0);
   fs.writeFileSync(path.join(sb.dir, 'config.json'), JSON.stringify({ state_schema: 99 }));
   assert.equal(sb.run('selftest').status, 0);
+});
+
+// ---------- reindex ----------
+
+const R = (id, title, o = {}) => ({ id, tier: 'B', title, detail: '', applies_to: [], ...o });
+
+test('diffRules: all classes', () => {
+  const d = diffRules([R('B-1', 'a'), R('B-2', 'b'), R('B-3', 'c')], [R('B-1', 'a'), R('B-2', 'b2'), R('B-9', 'n')]);
+  assert.deepEqual(d, { unchanged: ['B-1'], moved: [], changed: ['B-2'], added: ['B-9'], removed: ['B-3'], audit: ['B-2', 'B-9'] });
+});
+
+test('diffRules: insert-shift, duplicates, tier change', () => {
+  const d = diffRules([R('B-3', 'A'), R('B-4', 'B')], [R('B-3', 'X'), R('B-4', 'A'), R('B-5', 'B')]);
+  assert.deepEqual(d.moved, [{ from: 'B-3', to: 'B-4' }, { from: 'B-4', to: 'B-5' }]);
+  assert.deepEqual([d.added, d.changed], [['B-3'], []]);
+  const dup = diffRules([R('B-1', 'a'), R('B-2', 'a')], [R('B-7', 'a'), R('B-8', 'a')]);
+  assert.deepEqual(dup.moved, [{ from: 'B-1', to: 'B-7' }, { from: 'B-2', to: 'B-8' }]);
+  const t = diffRules([R('B-1', 'a')], [R('B-1', 'a', { tier: 'C' })]);
+  assert.deepEqual([t.moved, t.changed], [[], ['B-1']]);
+});
+
+const idx = rules => ({ schema: 1, standard: { version: '2' }, tiers: [{ id: 'A', name: 'A', order: 1 }, { id: 'B', name: 'B', order: 2 }], rules });
+
+test('reindex: first run installs index, all added, input deleted', () => {
+  const sb = sandbox();
+  const p = sb.writeTmp('n.json', idx([R('B-1', 'a')]));
+  const r = sb.run('reindex', p);
+  assert.equal(r.status, 0);
+  assert.deepEqual(JSON.parse(r.stdout).audit, ['B-1']);
+  assert.equal(sb.readJson('rules.json').rules.length, 1);
+  assert.equal(fs.existsSync(p), false);
+});
+
+test('reindex: carries verdicts and baseline, lowers level', () => {
+  const sb = sandbox();
+  sb.run('reindex', sb.writeTmp('a.json', idx([R('A-1', 'low', { tier: 'A' }), R('B-3', 'A'), R('B-4', 'B'), R('B-6', 'gone'), R('B-7', 'chg')])));
+  const res = [['A-1', 'pass'], ['B-3', 'pass'], ['B-4', 'pass'], ['B-6', 'pass'], ['B-7', 'pass']].map(([id, status]) => ({ id, status, evidence: 'e' }));
+  sb.run('merge', sb.writeTmp('m.json', res));
+  assert.equal(sb.readJson('baseline.json').level, 'B');
+  const r = sb.run('reindex', sb.writeTmp('b.json', idx([R('A-1', 'low', { tier: 'A' }), R('A-2', 'new low', { tier: 'A' }), R('B-3', 'X'), R('B-4', 'A'), R('B-5', 'B'), R('B-7', 'chg2')])));
+  assert.equal(r.status, 0);
+  const c = sb.readJson('compliance.json');
+  assert.deepEqual(c.results.map(x => x.id).sort(), ['A-1', 'B-4', 'B-5']);
+  assert.equal(c.standard_version, '2');
+  const b = sb.readJson('baseline.json');
+  assert.deepEqual(b.protected, ['A-1', 'B-4', 'B-5']);
+  assert.equal(b.level, 'NONE');
+});
+
+test('reindex: invalid input exits 1 and leaves state untouched', () => {
+  const sb = sandbox();
+  sb.run('reindex', sb.writeTmp('a.json', idx([R('B-1', 'a')])));
+  sb.run('merge', sb.writeTmp('m.json', [{ id: 'B-1', status: 'pass' }]));
+  const snap = () => ['rules.json', 'compliance.json', 'baseline.json'].map(f => fs.readFileSync(path.join(sb.dir, f), 'utf8'));
+  const before = snap();
+  for (const bad of [idx([R('B-1', 'a'), R('B-1', 'b')]), idx([R('B-1', 'a', { tier: 'Z' })]), '{nope']) {
+    const r = sb.run('reindex', sb.writeTmp('x.json', bad));
+    assert.equal(r.status, 1);
+  }
+  assert.equal(sb.run('reindex', path.join(sb.root, 'missing.json')).status, 1);
+  assert.deepEqual(snap(), before);
 });
