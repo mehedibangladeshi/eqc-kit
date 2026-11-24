@@ -42,7 +42,7 @@ Any edit that moves lines or changes titles or numbering makes the Index stale. 
 In your agent:   eqc check docs/quality-standard.md        (Claude Code: /eqc-check docs/quality-standard.md)
 ```
 
-This deletes `rules.json` and `compliance.json`, re-indexes, validates, and re-audits every Rule. `milestones.json` and `plans/` are kept. See [writing-a-standard.md](writing-a-standard.md#re-indexing-after-you-edit-the-doc).
+This re-indexes, validates the new Index, and keeps Verdicts: unchanged and renumbered Rules keep theirs, and only added or changed Rules are re-audited. The Baseline level can drop if the Standard raised the bar. `milestones.json` and `plans/` are kept. For a full rebuild, run `eqc reset` first. See [writing-a-standard.md](writing-a-standard.md#re-indexing-after-you-edit-the-doc).
 
 ## `check-ids` fails
 

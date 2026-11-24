@@ -93,7 +93,7 @@ From Google Docs, Confluence or Notion: export as Markdown, or copy the text int
 
 ## Re-indexing after you edit the doc
 
-Any edit that changes line numbers, titles or numbering makes the Index stale. In your agent, run the `eqc check` Prompt with the path to the doc, for example `eqc check standards/my-standard.md`. That rebuilds the Index from scratch, validates it, and re-audits every Rule. `milestones.json` and `plans/` are kept as history; `rules.json` and `compliance.json` are replaced.
+Any edit that changes line numbers, titles or numbering makes the Index stale. In your agent, run the `eqc check` Prompt with the path to the doc, for example `eqc check standards/my-standard.md`. That rebuilds the Index from scratch, validates it, and carries Verdicts over: only added or changed Rules are re-audited (see [Re-index](concepts.md#re-index)). `milestones.json` and `plans/` are kept as history. For a full re-audit, run `eqc reset` first.
 
 To validate without re-auditing, run the Engine yourself (from the repo root):
 
