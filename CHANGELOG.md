@@ -4,6 +4,8 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-24
+
 ### Added
 - Engine command `reindex <file>` makes the agent's new Index the Index. It prints the Rule delta as JSON (`unchanged`, `moved`, `changed`, `added`, `removed`, `audit`), carries Verdicts and Baseline protection across for unchanged and renumbered Rules, and deletes the input file. Invalid input exits 1 and changes nothing.
 
